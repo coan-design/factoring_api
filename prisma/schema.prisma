@@ -1,0 +1,301 @@
+// Schema Prisma - Sistema de Factoring
+// Convenções:
+//  - Todos os IDs são UUID (default: uuid()).
+//  - Campos monetários usam Decimal(15,2). Campos de taxa/percentual usam Decimal(9,6)
+//    para suportar precisão em taxas fracionárias (ex.: 0.025000 = 2,5%).
+//  - Campos "Date" do diagrama (sem hora) usam `DateTime @db.Date`.
+//    Campos "DateTime" do diagrama usam `DateTime` puro (com hora).
+//  - Herança Recebivel -> Cheque/Duplicata modelada como TABELA ÚNICA COM DISCRIMINADOR
+//    (campo `tipo`), com os campos específicos de cada subtipo como opcionais.
+//    Justificativa detalhada no README (resumo: os dois subtipos são poucos e simples,
+//    a maioria das queries de negócio trata "recebível" de forma polimórfica --
+//    ex.: "recebíveis do cliente", "recebíveis vencidos", "itens de negociação" --
+//    então uma tabela única evita joins constantes e simplifica o Prisma, que não tem
+//    suporte nativo a herança. O custo é um punhado de colunas nulas por linha,
+//    aceitável dado o tamanho do domínio.)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================================================
+// ENUMS
+// ==========================================================================
+
+enum PerfilUsuario {
+  ADMIN
+  OPERADOR
+  ANALISTA
+}
+
+enum TipoCliente {
+  PESSOA_FISICA
+  PESSOA_JURIDICA
+}
+
+enum StatusCliente {
+  ATIVO
+  INATIVO
+}
+
+enum TipoRecebivel {
+  CHEQUE
+  DUPLICATA
+}
+
+enum StatusRecebivel {
+  PENDENTE
+  NEGOCIADO
+  QUITADO
+  VENCIDO
+  INADIMPLENTE
+}
+
+enum TipoJuros {
+  SIMPLES
+  COMPOSTO
+}
+
+enum StatusParcela {
+  PENDENTE
+  PAGA
+  ATRASADA
+}
+
+enum TipoNegociacao {
+  RECEBIVEIS
+  EMPRESTIMO
+  MISTA
+}
+
+enum StatusNegociacao {
+  EM_ANALISE
+  APROVADA
+  FINALIZADA
+  CANCELADA
+}
+
+enum FormaPagamento {
+  PIX
+  TED
+  BOLETO
+  DINHEIRO
+}
+
+// ==========================================================================
+// USUARIO
+// ==========================================================================
+
+model Usuario {
+  id         String        @id @default(uuid())
+  nome       String
+  email      String        @unique
+  senhaHash  String
+  perfil     PerfilUsuario
+  ativo      Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  negociacoes Negociacao[] @relation("UsuarioCriaNegociacao")
+
+  @@index([perfil])
+}
+
+// ==========================================================================
+// CLIENTE / ENDERECO
+// ==========================================================================
+
+model Cliente {
+  id            String        @id @default(uuid())
+  nome          String
+  cpfCnpj       String        @unique
+  tipoCliente   TipoCliente
+  email         String
+  telefone      String
+  status        StatusCliente @default(ATIVO)
+  dataCadastro  DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  enderecoId    String?       @unique
+  endereco      Endereco?     @relation(fields: [enderecoId], references: [id])
+
+  recebiveis    Recebivel[]
+  emprestimos   Emprestimo[]
+  negociacoes   Negociacao[]
+
+  @@index([status])
+}
+
+model Endereco {
+  id          String   @id @default(uuid())
+  cep         String
+  logradouro  String
+  numero      String
+  bairro      String
+  cidade      String
+  estado      String
+
+  cliente     Cliente?
+}
+
+// ==========================================================================
+// RECEBIVEL (Cheque | Duplicata) -- tabela única com discriminador `tipo`
+// ==========================================================================
+
+model Recebivel {
+  id              String          @id @default(uuid())
+  tipo            TipoRecebivel
+
+  valorNominal    Decimal         @db.Decimal(15, 2)
+  valorAberto     Decimal         @db.Decimal(15, 2)
+  dataEmissao     DateTime        @db.Date
+  dataVencimento  DateTime        @db.Date
+  status          StatusRecebivel @default(PENDENTE)
+
+  // --- campos específicos de Cheque (nulos quando tipo = DUPLICATA) ---
+  banco           String?
+  agencia         String?
+  conta           String?
+  numeroCheque    String?
+  dataBomPara     DateTime?       @db.Date
+
+  // --- campos específicos de Duplicata (nulos quando tipo = CHEQUE) ---
+  numeroNotaFiscal String?
+  aceite            Boolean?
+
+  clienteId       String
+  cliente         Cliente         @relation(fields: [clienteId], references: [id])
+
+  itensNegociacao ItemNegociacaoRecebivel[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([clienteId])
+  @@index([status])
+  @@index([tipo])
+}
+
+// ==========================================================================
+// EMPRESTIMO / PARCELA
+// ==========================================================================
+
+model Emprestimo {
+  id                  String     @id @default(uuid())
+  valorEmprestado     Decimal    @db.Decimal(15, 2)
+  tipoJuros           TipoJuros
+  taxaJuros           Decimal    @db.Decimal(9, 6)
+  quantidadeParcelas  Int
+  dataContratacao     DateTime   @db.Date
+
+  clienteId           String
+  cliente             Cliente    @relation(fields: [clienteId], references: [id])
+
+  parcelas            ParcelaEmprestimo[]
+  itensNegociacao     ItemNegociacaoEmprestimo[]
+
+  createdAt           DateTime   @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([clienteId])
+}
+
+model ParcelaEmprestimo {
+  id              String        @id @default(uuid())
+  numero          Int
+  valor           Decimal       @db.Decimal(15, 2)
+  valorPago       Decimal       @db.Decimal(15, 2) @default(0)
+  dataVencimento  DateTime      @db.Date
+  status          StatusParcela @default(PENDENTE)
+
+  emprestimoId    String
+  emprestimo      Emprestimo    @relation(fields: [emprestimoId], references: [id], onDelete: Cascade)
+
+  @@unique([emprestimoId, numero])
+  @@index([status])
+}
+
+// ==========================================================================
+// NEGOCIACAO / ITENS
+// ==========================================================================
+
+model Negociacao {
+  id                 String           @id @default(uuid())
+  numero             String           @unique
+  titulo             String
+  descricao          String?
+  dataNegociacao     DateTime         @default(now())
+  tipoNegociacao     TipoNegociacao
+  status             StatusNegociacao @default(EM_ANALISE)
+
+  // Campos calculados sob demanda (ver Negociacao.calcular*() nos services) e persistidos
+  // para leitura rapida. Recalculados a cada mutacao relevante: inclusao/remocao de item,
+  // pagamento de recebivel/parcela vinculado, ou alteracao de valorTarifas.
+  valorBruto         Decimal          @db.Decimal(15, 2)
+  valorTarifas       Decimal          @db.Decimal(15, 2)
+  valorTotalReceber  Decimal          @db.Decimal(15, 2)
+  valorPago          Decimal          @db.Decimal(15, 2) @default(0)
+  valorAReceber      Decimal          @db.Decimal(15, 2)
+  formaPagamento     FormaPagamento
+
+  clienteId          String
+  cliente            Cliente          @relation(fields: [clienteId], references: [id])
+
+  usuarioId          String
+  usuario            Usuario          @relation("UsuarioCriaNegociacao", fields: [usuarioId], references: [id])
+
+  itensRecebivel     ItemNegociacaoRecebivel[]
+  itensEmprestimo    ItemNegociacaoEmprestimo[]
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([clienteId])
+  @@index([status])
+}
+
+model ItemNegociacaoRecebivel {
+  id                String     @id @default(uuid())
+  valorConsiderado  Decimal    @db.Decimal(15, 2)
+  quantidadeDias    Int
+  taxaDesagio       Decimal    @db.Decimal(9, 6)
+  valorDesagio      Decimal    @db.Decimal(15, 2)
+  valorLiquido      Decimal    @db.Decimal(15, 2)
+
+  negociacaoId      String
+  negociacao        Negociacao @relation(fields: [negociacaoId], references: [id], onDelete: Cascade)
+
+  recebivelId       String
+  recebivel         Recebivel  @relation(fields: [recebivelId], references: [id])
+
+  @@index([negociacaoId])
+  @@index([recebivelId])
+}
+
+/**
+ * Tabela de juncao pura: o emprestimo entra inteiro na negociacao (todas as suas
+ * ParcelaEmprestimo, pagas ou nao, continuam vinculadas ao Emprestimo original). Nao ha
+ * valores proprios aqui -- Negociacao.calcularValorBruto/ValorTotalReceber/ValorPago le
+ * diretamente de Emprestimo/ParcelaEmprestimo para os itens referenciados por esta tabela.
+ */
+model ItemNegociacaoEmprestimo {
+  id              String     @id @default(uuid())
+
+  negociacaoId    String
+  negociacao      Negociacao @relation(fields: [negociacaoId], references: [id], onDelete: Cascade)
+
+  emprestimoId    String
+  emprestimo      Emprestimo @relation(fields: [emprestimoId], references: [id])
+
+  createdAt       DateTime   @default(now())
+
+  @@unique([negociacaoId, emprestimoId])
+  @@index([negociacaoId])
+  @@index([emprestimoId])
+}

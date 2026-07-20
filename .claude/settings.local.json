@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/prisma)",
+      "Bash(npx --yes prisma@latest validate --schema=prisma/schema.prisma)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(npx --yes prisma@6 validate --schema=prisma/schema.prisma)",
+      "Bash(npm install *)",
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)",
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(groups; ls *)",
+      "Read(//run/**)",
+      "Bash(sudo -n true)",
+      "Bash(DATABASE_URL=\"postgresql://user:pass@localhost:5432/factoring?schema=public\" npx prisma validate --schema=prisma/schema.prisma)",
+      "Read(//tmp/**)",
+      "Bash(rm -f /tmp/claude-1000/-home-ana-laura-coan-Documentos-factoring-v2-0-factoring-api-v2-0/5e2fa2a3-24a5-4b00-a963-532bfb43d4b1/scratchpad/schema.before.prisma /tmp/prisma_diff_err.log)"
+    ],
+    "additionalDirectories": [
+      "/home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0",
+      "/tmp"
+    ]
+  }
+}

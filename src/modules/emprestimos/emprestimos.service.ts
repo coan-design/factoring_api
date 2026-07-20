@@ -3,7 +3,7 @@ import { Prisma, StatusParcela } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEmprestimoDto } from './dto/create-emprestimo.dto';
 import { UpdateEmprestimoDto } from './dto/update-emprestimo.dto';
-import { calcularValorParcela } from './emprestimo.rules';
+import { calcularSaldoDevedorEmprestimo, calcularValorParcela } from './emprestimo.rules';
 
 function adicionarMeses(data: Date, meses: number): Date {
   const resultado = new Date(data);
@@ -115,5 +115,17 @@ export class EmprestimosService {
     }
 
     return resultado._sum.valor;
+  }
+
+  /** Emprestimo.calcularSaldoDevedor(): quanto ainda falta receber deste emprestimo hoje. */
+  async calcularSaldoDevedor(emprestimoId: string): Promise<Prisma.Decimal> {
+    await this.findOne(emprestimoId);
+
+    const parcelas = await this.prisma.parcelaEmprestimo.findMany({ where: { emprestimoId } });
+    if (parcelas.length === 0) {
+      throw new BadRequestException('Parcelas ainda nao foram geradas para este emprestimo');
+    }
+
+    return calcularSaldoDevedorEmprestimo(parcelas);
   }
 }

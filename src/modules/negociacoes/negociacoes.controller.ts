@@ -20,7 +20,6 @@ import { CreateNegociacaoDto } from './dto/create-negociacao.dto';
 import { UpdateNegociacaoDto } from './dto/update-negociacao.dto';
 import { AdicionarItemRecebivelDto } from './dto/adicionar-item-recebivel.dto';
 import { AdicionarItemEmprestimoDto } from './dto/adicionar-item-emprestimo.dto';
-import { RegistrarPagamentoNegociacaoDto } from './dto/registrar-pagamento-negociacao.dto';
 
 @ApiTags('negociacoes')
 @ApiBearerAuth()
@@ -81,12 +80,6 @@ export class NegociacoesController {
   @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
   cancelar(@Param('id') id: string) {
     return this.negociacoesService.cancelar(id);
-  }
-
-  @Patch(':id/pagamento')
-  @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
-  registrarPagamento(@Param('id') id: string, @Body() dto: RegistrarPagamentoNegociacaoDto) {
-    return this.negociacoesService.registrarPagamento(id, dto.valor);
   }
 
   @Patch(':id/finalizar')

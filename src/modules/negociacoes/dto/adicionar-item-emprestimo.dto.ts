@@ -1,13 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, IsPositive, IsUUID } from 'class-validator';
+import { IsUUID } from 'class-validator';
 
 export class AdicionarItemEmprestimoDto {
-  @ApiProperty()
+  @ApiProperty({ description: 'Emprestimo entra inteiro na negociacao (todas as parcelas, pagas ou nao)' })
   @IsUUID()
   emprestimoId: string;
-
-  @ApiProperty({ description: 'Taxa de juros aplicada ao principal do emprestimo nesta negociacao' })
-  @IsNumber({ maxDecimalPlaces: 6 })
-  @IsPositive()
-  taxaJuros: number;
 }

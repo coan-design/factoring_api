@@ -8,6 +8,15 @@ export class CreateNegociacaoDto {
   numero: string;
 
   @ApiProperty()
+  @IsString()
+  titulo: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  descricao?: string;
+
+  @ApiProperty()
   @IsUUID()
   clienteId: string;
 

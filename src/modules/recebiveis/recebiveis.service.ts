@@ -1,13 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { StatusRecebivel } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NegociacoesService } from '../negociacoes/negociacoes.service';
 import { CreateRecebivelDto } from './dto/create-recebivel.dto';
 import { UpdateRecebivelDto } from './dto/update-recebivel.dto';
 import { calcularValorAbertoAposPagamento, estaQuitado, estaVencido } from './recebivel.rules';
 
 @Injectable()
 export class RecebiveisService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly negociacoesService: NegociacoesService,
+  ) {}
 
   async create(dto: CreateRecebivelDto) {
     const cliente = await this.prisma.cliente.findUnique({ where: { id: dto.clienteId } });
@@ -92,9 +96,15 @@ export class RecebiveisService {
         ? StatusRecebivel.VENCIDO
         : recebivel.status;
 
-    return this.prisma.recebivel.update({
+    const atualizado = await this.prisma.recebivel.update({
       where: { id },
       data: { valorAberto: novoValorAberto, status: novoStatus },
     });
+
+    // Se este recebivel estiver vinculado a uma negociacao aberta, seus totais
+    // (valorPago/valorAReceber) dependem de Recebivel.valorAberto e precisam ser recalculados.
+    await this.negociacoesService.recalcularPorRecebivel(id);
+
+    return atualizado;
   }
 }

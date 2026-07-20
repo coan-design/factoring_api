@@ -37,3 +37,17 @@ export function parcelaEstaQuitada(parcela: ParcelaValores): boolean {
     new Prisma.Decimal(parcela.valor),
   );
 }
+
+/**
+ * Emprestimo.calcularSaldoDevedor(): soma de (valor - valorPago) das parcelas ainda nao
+ * quitadas. Parcelas quitadas nao contribuem (mesmo se valorPago > valor por algum
+ * pagamento excedente).
+ */
+export function calcularSaldoDevedorEmprestimo(parcelas: ParcelaValores[]): Prisma.Decimal {
+  return parcelas.reduce((acumulado, parcela) => {
+    if (parcelaEstaQuitada(parcela)) {
+      return acumulado;
+    }
+    return acumulado.plus(new Prisma.Decimal(parcela.valor).minus(parcela.valorPago));
+  }, new Prisma.Decimal(0));
+}

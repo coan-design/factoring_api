@@ -20,62 +20,90 @@ export function calcularValorLiquidoItemRecebivel(
   return new Prisma.Decimal(valorConsiderado).minus(new Prisma.Decimal(valorDesagio));
 }
 
-/** ItemNegociacaoEmprestimo.calcularJuros(): valorPrincipal * taxaJuros. */
-export function calcularJurosItemEmprestimo(
-  valorPrincipal: Prisma.Decimal.Value,
-  taxaJuros: Prisma.Decimal.Value,
-): Prisma.Decimal {
-  return new Prisma.Decimal(valorPrincipal).times(new Prisma.Decimal(taxaJuros));
+interface ItemRecebivelParaCalculo {
+  valorLiquido: Prisma.Decimal.Value;
+  recebivel: {
+    valorNominal: Prisma.Decimal.Value;
+    valorAberto: Prisma.Decimal.Value;
+  };
 }
 
-/** ItemNegociacaoEmprestimo.calcularValorTotal(): valorPrincipal + valorJuros. */
-export function calcularValorTotalItemEmprestimo(
-  valorPrincipal: Prisma.Decimal.Value,
-  valorJuros: Prisma.Decimal.Value,
-): Prisma.Decimal {
-  return new Prisma.Decimal(valorPrincipal).plus(new Prisma.Decimal(valorJuros));
+interface ItemEmprestimoParaCalculo {
+  emprestimo: {
+    valorEmprestado: Prisma.Decimal.Value;
+    parcelas: { valor: Prisma.Decimal.Value; valorPago: Prisma.Decimal.Value }[];
+  };
 }
 
 export interface TotaisNegociacao {
   valorBruto: Prisma.Decimal;
-  valorDesagio: Prisma.Decimal;
-  valorJuros: Prisma.Decimal;
-  valorLiquido: Prisma.Decimal;
-  saldoNegociacao: Prisma.Decimal;
+  valorTotalReceber: Prisma.Decimal;
+  valorPago: Prisma.Decimal;
+  valorAReceber: Prisma.Decimal;
 }
 
-type ItemRecebivelValores = { valorConsiderado: Prisma.Decimal.Value; valorDesagio: Prisma.Decimal.Value };
-type ItemEmprestimoValores = { valorPrincipal: Prisma.Decimal.Value; valorJuros: Prisma.Decimal.Value };
-
 /**
- * Negociacao.calcularValorLiquido() + calcularSaldoNegociacao():
- * valorBruto = soma(valorConsiderado dos itens de recebivel) + soma(valorPrincipal dos itens de emprestimo)
- * valorLiquido = soma dos valores liquidos dos itens (valorConsiderado - valorDesagio; valorPrincipal + valorJuros), menos tarifas
- * saldoNegociacao = valorLiquido - valorPago
+ * Agrega os quatro campos calculados de Negociacao a partir dos itens vinculados.
+ * O emprestimo entra "inteiro": nao ha valores proprios em ItemNegociacaoEmprestimo, os
+ * totais leem diretamente de Emprestimo.valorEmprestado e das ParcelaEmprestimo geradas
+ * (pagas ou nao), independente de quando essas parcelas foram pagas.
+ *
+ * - calcularValorBruto(): soma(Emprestimo.valorEmprestado) + soma(ItemNegociacaoRecebivel.valorLiquido)
+ *   -> quanto a factoring desembolsou na negociacao.
+ * - calcularValorTotalReceber(): soma(Emprestimo.calcularValorTotal(), i.e. soma das parcelas)
+ *   + soma(Recebivel.valorNominal) -> quanto se espera receber no total, ja com o lucro embutido.
+ * - calcularValorPago(): soma(Recebivel.valorNominal - Recebivel.valorAberto)
+ *   + soma(ParcelaEmprestimo.valorPago) -> o que ja entrou de fato, incluindo pagamentos
+ *   anteriores a inclusao na negociacao.
+ * - calcularValorAReceber(): valorTotalReceber - valorPago - valorTarifas.
  */
 export function calcularTotaisNegociacao(
-  itensRecebivel: ItemRecebivelValores[],
-  itensEmprestimo: ItemEmprestimoValores[],
+  itensRecebivel: ItemRecebivelParaCalculo[],
+  itensEmprestimo: ItemEmprestimoParaCalculo[],
   valorTarifas: Prisma.Decimal.Value,
-  valorPago: Prisma.Decimal.Value,
 ): TotaisNegociacao {
   const zero = new Prisma.Decimal(0);
 
   const valorBrutoRecebiveis = itensRecebivel.reduce(
-    (acc, item) => acc.plus(item.valorConsiderado),
+    (acumulado, item) => acumulado.plus(item.valorLiquido),
     zero,
   );
   const valorBrutoEmprestimos = itensEmprestimo.reduce(
-    (acc, item) => acc.plus(item.valorPrincipal),
+    (acumulado, item) => acumulado.plus(item.emprestimo.valorEmprestado),
     zero,
   );
-  const valorDesagio = itensRecebivel.reduce((acc, item) => acc.plus(item.valorDesagio), zero);
-  const valorJuros = itensEmprestimo.reduce((acc, item) => acc.plus(item.valorJuros), zero);
-
   const valorBruto = valorBrutoRecebiveis.plus(valorBrutoEmprestimos);
-  const tarifas = new Prisma.Decimal(valorTarifas);
-  const valorLiquido = valorBruto.minus(valorDesagio).minus(valorJuros).minus(tarifas);
-  const saldoNegociacao = valorLiquido.minus(new Prisma.Decimal(valorPago));
 
-  return { valorBruto, valorDesagio, valorJuros, valorLiquido, saldoNegociacao };
+  const valorTotalReceberRecebiveis = itensRecebivel.reduce(
+    (acumulado, item) => acumulado.plus(item.recebivel.valorNominal),
+    zero,
+  );
+  const valorTotalReceberEmprestimos = itensEmprestimo.reduce((acumulado, item) => {
+    const totalParcelas = item.emprestimo.parcelas.reduce(
+      (somaParcelas, parcela) => somaParcelas.plus(parcela.valor),
+      zero,
+    );
+    return acumulado.plus(totalParcelas);
+  }, zero);
+  const valorTotalReceber = valorTotalReceberRecebiveis.plus(valorTotalReceberEmprestimos);
+
+  const valorPagoRecebiveis = itensRecebivel.reduce(
+    (acumulado, item) =>
+      acumulado.plus(
+        new Prisma.Decimal(item.recebivel.valorNominal).minus(item.recebivel.valorAberto),
+      ),
+    zero,
+  );
+  const valorPagoEmprestimos = itensEmprestimo.reduce((acumulado, item) => {
+    const totalPago = item.emprestimo.parcelas.reduce(
+      (somaParcelas, parcela) => somaParcelas.plus(parcela.valorPago),
+      zero,
+    );
+    return acumulado.plus(totalPago);
+  }, zero);
+  const valorPago = valorPagoRecebiveis.plus(valorPagoEmprestimos);
+
+  const valorAReceber = valorTotalReceber.minus(valorPago).minus(new Prisma.Decimal(valorTarifas));
+
+  return { valorBruto, valorTotalReceber, valorPago, valorAReceber };
 }

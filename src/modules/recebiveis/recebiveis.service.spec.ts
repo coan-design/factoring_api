@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { StatusRecebivel, TipoRecebivel } from '@prisma/client';
 import { RecebiveisService } from './recebiveis.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NegociacoesService } from '../negociacoes/negociacoes.service';
 
 describe('RecebiveisService', () => {
   let service: RecebiveisService;
@@ -10,6 +11,7 @@ describe('RecebiveisService', () => {
     recebivel: { findUnique: jest.Mock; update: jest.Mock };
     cliente: { findUnique: jest.Mock };
   };
+  let negociacoesService: { recalcularPorRecebivel: jest.Mock };
 
   const diasNoFuturo = (dias: number) => {
     const data = new Date();
@@ -22,9 +24,14 @@ describe('RecebiveisService', () => {
       recebivel: { findUnique: jest.fn(), update: jest.fn() },
       cliente: { findUnique: jest.fn() },
     };
+    negociacoesService = { recalcularPorRecebivel: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [RecebiveisService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        RecebiveisService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: NegociacoesService, useValue: negociacoesService },
+      ],
     }).compile();
 
     service = module.get(RecebiveisService);
@@ -79,6 +86,21 @@ describe('RecebiveisService', () => {
         }),
       );
       expect(resultado.status).toBe(StatusRecebivel.QUITADO);
+    });
+
+    it('aciona o recalculo dos totais da negociacao vinculada apos o pagamento', async () => {
+      prisma.recebivel.findUnique.mockResolvedValue({
+        id: 'r1',
+        tipo: TipoRecebivel.DUPLICATA,
+        status: StatusRecebivel.NEGOCIADO,
+        valorAberto: 100,
+        dataVencimento: diasNoFuturo(10),
+      });
+      prisma.recebivel.update.mockImplementation(({ data }) => Promise.resolve(data));
+
+      await service.registrarPagamento('r1', 40);
+
+      expect(negociacoesService.recalcularPorRecebivel).toHaveBeenCalledWith('r1');
     });
 
     it('mantem o status quando o pagamento e parcial e o titulo nao esta vencido', async () => {

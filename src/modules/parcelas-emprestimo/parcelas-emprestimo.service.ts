@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatusParcela } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NegociacoesService } from '../negociacoes/negociacoes.service';
 import { parcelaEstaQuitada } from '../emprestimos/emprestimo.rules';
 
 @Injectable()
 export class ParcelasEmprestimoService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly negociacoesService: NegociacoesService,
+  ) {}
 
   findAllByEmprestimo(emprestimoId: string) {
     return this.prisma.parcelaEmprestimo.findMany({
@@ -46,9 +50,15 @@ export class ParcelasEmprestimoService {
         ? StatusParcela.ATRASADA
         : StatusParcela.PENDENTE;
 
-    return this.prisma.parcelaEmprestimo.update({
+    const atualizada = await this.prisma.parcelaEmprestimo.update({
       where: { id },
       data: { valorPago: novoValorPago, status: novoStatus },
     });
+
+    // Se o emprestimo desta parcela estiver vinculado a uma negociacao aberta, os totais
+    // da negociacao (valorPago/valorAReceber) dependem de ParcelaEmprestimo.valorPago.
+    await this.negociacoesService.recalcularPorEmprestimo(parcela.emprestimoId);
+
+    return atualizada;
   }
 }

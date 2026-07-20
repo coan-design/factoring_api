@@ -1,22 +1,19 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatusNegociacao, StatusRecebivel } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { STATUS_NEGOCIACAO_BLOQUEIA_REUSO } from '../../common/constants/negociacao.constants';
+import {
+  STATUS_NEGOCIACAO_ABERTOS,
+  STATUS_NEGOCIACAO_BLOQUEIA_REUSO,
+} from '../../common/constants/negociacao.constants';
 import { CreateNegociacaoDto } from './dto/create-negociacao.dto';
 import { UpdateNegociacaoDto } from './dto/update-negociacao.dto';
 import { AdicionarItemRecebivelDto } from './dto/adicionar-item-recebivel.dto';
 import { AdicionarItemEmprestimoDto } from './dto/adicionar-item-emprestimo.dto';
-import {
-  calcularDesagio,
-  calcularJurosItemEmprestimo,
-  calcularTotaisNegociacao,
-  calcularValorLiquidoItemRecebivel,
-  calcularValorTotalItemEmprestimo,
-} from './negociacao.rules';
+import { calcularDesagio, calcularTotaisNegociacao, calcularValorLiquidoItemRecebivel } from './negociacao.rules';
 
 const INCLUDE_ITENS = {
   itensRecebivel: { include: { recebivel: true } },
-  itensEmprestimo: { include: { emprestimo: true } },
+  itensEmprestimo: { include: { emprestimo: { include: { parcelas: true } } } },
 } satisfies Prisma.NegociacaoInclude;
 
 @Injectable()
@@ -39,17 +36,17 @@ export class NegociacoesService {
     const negociacao = await this.prisma.negociacao.create({
       data: {
         numero: dto.numero,
+        titulo: dto.titulo,
+        descricao: dto.descricao,
         clienteId: dto.clienteId,
         tipoNegociacao: dto.tipoNegociacao,
         formaPagamento: dto.formaPagamento,
         usuarioId,
         valorTarifas: dto.valorTarifas ?? 0,
         valorBruto: 0,
-        valorDesagio: 0,
-        valorJuros: 0,
-        valorLiquido: 0,
+        valorTotalReceber: 0,
         valorPago: 0,
-        saldoNegociacao: 0,
+        valorAReceber: 0,
       },
     });
 
@@ -96,8 +93,8 @@ export class NegociacoesService {
 
   /**
    * Negociacao.adicionarRecebivel(item): valida que o recebivel pertence ao mesmo cliente
-   * da negociacao e que ainda nao esta preso a outra negociacao ativa, calcula o desagio
-   * e o valor liquido do item, e recalcula os totais da negociacao.
+   * da negociacao e que ainda nao esta preso a outra negociacao ativa. valorConsiderado e
+   * o valorNominal do recebivel no momento da inclusao. Recalcula os totais da negociacao.
    */
   async adicionarRecebivel(negociacaoId: string, dto: AdicionarItemRecebivelDto) {
     return this.prisma.$transaction(async (tx) => {
@@ -127,7 +124,7 @@ export class NegociacoesService {
         throw new ConflictException('Este recebivel ja esta vinculado a outra negociacao ativa');
       }
 
-      const valorConsiderado = recebivel.valorAberto;
+      const valorConsiderado = recebivel.valorNominal;
       const valorDesagio = calcularDesagio(valorConsiderado, dto.taxaDesagio, dto.quantidadeDias);
       const valorLiquido = calcularValorLiquidoItemRecebivel(valorConsiderado, valorDesagio);
 
@@ -153,8 +150,10 @@ export class NegociacoesService {
   }
 
   /**
-   * Negociacao.adicionarEmprestimo(item): mesma validacao de pertencimento ao cliente e
-   * de nao reuso em negociacao ativa, agora para Emprestimo.
+   * Negociacao.adicionarEmprestimo(item): cria um vinculo puro (sem valores proprios) entre
+   * a negociacao e o emprestimo, validando pertencimento ao cliente e nao-reuso em outra
+   * negociacao ativa. O emprestimo entra inteiro -- todas as suas parcelas (pagas ou nao)
+   * continuam vinculadas ao Emprestimo original e alimentam os totais da negociacao.
    */
   async adicionarEmprestimo(negociacaoId: string, dto: AdicionarItemEmprestimoDto) {
     return this.prisma.$transaction(async (tx) => {
@@ -164,13 +163,21 @@ export class NegociacoesService {
       }
       this.garantirEmAnalise(negociacao.status);
 
-      const emprestimo = await tx.emprestimo.findUnique({ where: { id: dto.emprestimoId } });
+      const emprestimo = await tx.emprestimo.findUnique({
+        where: { id: dto.emprestimoId },
+        include: { parcelas: true },
+      });
       if (!emprestimo) {
         throw new NotFoundException('Emprestimo nao encontrado');
       }
       if (emprestimo.clienteId !== negociacao.clienteId) {
         throw new ConflictException(
           'O emprestimo informado nao pertence ao cliente desta negociacao',
+        );
+      }
+      if (emprestimo.parcelas.length === 0) {
+        throw new ConflictException(
+          'As parcelas do emprestimo ainda nao foram geradas (gerarParcelas)',
         );
       }
 
@@ -184,19 +191,8 @@ export class NegociacoesService {
         throw new ConflictException('Este emprestimo ja esta vinculado a outra negociacao ativa');
       }
 
-      const valorPrincipal = emprestimo.valorEmprestado;
-      const valorJuros = calcularJurosItemEmprestimo(valorPrincipal, dto.taxaJuros);
-      const valorTotal = calcularValorTotalItemEmprestimo(valorPrincipal, valorJuros);
-
       await tx.itemNegociacaoEmprestimo.create({
-        data: {
-          negociacaoId,
-          emprestimoId: dto.emprestimoId,
-          valorPrincipal,
-          taxaJuros: dto.taxaJuros,
-          valorJuros,
-          valorTotal,
-        },
+        data: { negociacaoId, emprestimoId: dto.emprestimoId },
       });
 
       return this.recalcularTotais(tx, negociacaoId);
@@ -228,36 +224,45 @@ export class NegociacoesService {
     });
   }
 
-  /** Registra pagamento e recalcula o saldo, sem deixa-lo negativo. */
-  async registrarPagamento(id: string, valor: number) {
-    const negociacao = await this.findOne(id);
-    this.garantirNaoTerminal(negociacao.status);
-
-    const novoValorPago = new Prisma.Decimal(negociacao.valorPago).plus(valor);
-    const novoSaldo = new Prisma.Decimal(negociacao.valorLiquido).minus(novoValorPago);
-    if (novoSaldo.lessThan(0)) {
-      throw new BadRequestException('Valor pago excede o saldo da negociacao');
-    }
-
-    return this.prisma.negociacao.update({
-      where: { id },
-      data: { valorPago: novoValorPago, saldoNegociacao: novoSaldo },
-    });
-  }
-
-  /** Negociacao.finalizar(): so permite finalizar quando o saldo esta zerado. */
+  /** Negociacao.finalizar(): so permite finalizar quando valorAReceber esta zerado. */
   async finalizar(id: string) {
     const negociacao = await this.findOne(id);
     this.garantirNaoTerminal(negociacao.status);
 
-    if (!new Prisma.Decimal(negociacao.saldoNegociacao).equals(0)) {
-      throw new ConflictException('So e possivel finalizar a negociacao com saldo zerado');
+    if (!new Prisma.Decimal(negociacao.valorAReceber).equals(0)) {
+      throw new ConflictException('So e possivel finalizar a negociacao com valorAReceber zerado');
     }
 
     return this.prisma.negociacao.update({
       where: { id },
       data: { status: StatusNegociacao.FINALIZADA },
     });
+  }
+
+  /**
+   * Gatilho de recalculo: chamado pelo RecebiveisService sempre que um pagamento e
+   * registrado num recebivel. So recalcula negociacoes ainda abertas (EM_ANALISE/APROVADA) --
+   * negociacoes finalizadas/canceladas sao historico e nao devem ser reescritas.
+   */
+  async recalcularPorRecebivel(recebivelId: string) {
+    const itens = await this.prisma.itemNegociacaoRecebivel.findMany({
+      where: { recebivelId, negociacao: { status: { in: STATUS_NEGOCIACAO_ABERTOS } } },
+      select: { negociacaoId: true },
+    });
+    for (const item of itens) {
+      await this.recalcularTotais(this.prisma, item.negociacaoId);
+    }
+  }
+
+  /** Gatilho de recalculo: chamado pelo ParcelasEmprestimoService apos registrar pagamento. */
+  async recalcularPorEmprestimo(emprestimoId: string) {
+    const itens = await this.prisma.itemNegociacaoEmprestimo.findMany({
+      where: { emprestimoId, negociacao: { status: { in: STATUS_NEGOCIACAO_ABERTOS } } },
+      select: { negociacaoId: true },
+    });
+    for (const item of itens) {
+      await this.recalcularTotais(this.prisma, item.negociacaoId);
+    }
   }
 
   private garantirEmAnalise(status: StatusNegociacao) {
@@ -287,7 +292,6 @@ export class NegociacoesService {
       negociacao.itensRecebivel,
       negociacao.itensEmprestimo,
       negociacao.valorTarifas,
-      negociacao.valorPago,
     );
 
     return tx.negociacao.update({

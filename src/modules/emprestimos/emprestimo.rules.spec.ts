@@ -1,5 +1,9 @@
 import { TipoJuros } from '@prisma/client';
-import { calcularValorParcela, parcelaEstaQuitada } from './emprestimo.rules';
+import {
+  calcularSaldoDevedorEmprestimo,
+  calcularValorParcela,
+  parcelaEstaQuitada,
+} from './emprestimo.rules';
 
 describe('emprestimo.rules', () => {
   describe('calcularValorParcela', () => {
@@ -32,6 +36,29 @@ describe('emprestimo.rules', () => {
 
     it('retorna false quando valorPago e menor que o valor da parcela', () => {
       expect(parcelaEstaQuitada({ valor: 100, valorPago: 50 })).toBe(false);
+    });
+  });
+
+  describe('calcularSaldoDevedorEmprestimo', () => {
+    it('soma (valor - valorPago) apenas das parcelas ainda nao quitadas', () => {
+      const saldo = calcularSaldoDevedorEmprestimo([
+        { valor: 110, valorPago: 110 }, // quitada, nao entra
+        { valor: 110, valorPago: 50 }, // falta 60
+        { valor: 110, valorPago: 0 }, // falta 110
+      ]);
+      expect(saldo.toNumber()).toBe(170);
+    });
+
+    it('retorna zero quando todas as parcelas estao quitadas', () => {
+      const saldo = calcularSaldoDevedorEmprestimo([
+        { valor: 100, valorPago: 100 },
+        { valor: 100, valorPago: 150 },
+      ]);
+      expect(saldo.toNumber()).toBe(0);
+    });
+
+    it('retorna zero para uma lista vazia de parcelas', () => {
+      expect(calcularSaldoDevedorEmprestimo([]).toNumber()).toBe(0);
     });
   });
 });

@@ -2,10 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, StatusParcela } from '@prisma/client';
 import { ParcelasEmprestimoService } from './parcelas-emprestimo.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NegociacoesService } from '../negociacoes/negociacoes.service';
 
 describe('ParcelasEmprestimoService', () => {
   let service: ParcelasEmprestimoService;
   let prisma: { parcelaEmprestimo: { findUnique: jest.Mock; update: jest.Mock } };
+  let negociacoesService: { recalcularPorEmprestimo: jest.Mock };
 
   const diasNoFuturo = (dias: number) => {
     const data = new Date();
@@ -15,9 +17,14 @@ describe('ParcelasEmprestimoService', () => {
 
   beforeEach(async () => {
     prisma = { parcelaEmprestimo: { findUnique: jest.fn(), update: jest.fn() } };
+    negociacoesService = { recalcularPorEmprestimo: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ParcelasEmprestimoService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ParcelasEmprestimoService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: NegociacoesService, useValue: negociacoesService },
+      ],
     }).compile();
 
     service = module.get(ParcelasEmprestimoService);
@@ -83,6 +90,22 @@ describe('ParcelasEmprestimoService', () => {
 
       expect(resultado.valorPago.toNumber()).toBe(100);
       expect(resultado.status).toBe(StatusParcela.PAGA);
+    });
+
+    it('aciona o recalculo dos totais da negociacao vinculada ao emprestimo desta parcela', async () => {
+      prisma.parcelaEmprestimo.findUnique.mockResolvedValue({
+        id: 'p1',
+        emprestimoId: 'e1',
+        valor: new Prisma.Decimal(100),
+        valorPago: new Prisma.Decimal(0),
+        dataVencimento: diasNoFuturo(10),
+        status: StatusParcela.PENDENTE,
+      });
+      prisma.parcelaEmprestimo.update.mockImplementation(({ data }) => Promise.resolve(data));
+
+      await service.registrarPagamento('p1', 40);
+
+      expect(negociacoesService.recalcularPorEmprestimo).toHaveBeenCalledWith('e1');
     });
   });
 });

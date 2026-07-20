@@ -46,6 +46,12 @@ export class EmprestimosController {
     return { valorTotal };
   }
 
+  @Get(':id/saldo-devedor')
+  async calcularSaldoDevedor(@Param('id') id: string) {
+    const saldoDevedor = await this.emprestimosService.calcularSaldoDevedor(id);
+    return { saldoDevedor };
+  }
+
   @Patch(':id')
   @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
   update(@Param('id') id: string, @Body() dto: UpdateEmprestimoDto) {

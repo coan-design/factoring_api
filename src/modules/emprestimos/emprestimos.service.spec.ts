@@ -89,4 +89,24 @@ describe('EmprestimosService', () => {
       expect(total.toNumber()).toBe(1100);
     });
   });
+
+  describe('calcularSaldoDevedor', () => {
+    it('lanca BadRequestException se as parcelas ainda nao foram geradas', async () => {
+      prisma.emprestimo.findUnique.mockResolvedValue(emprestimo);
+      prisma.parcelaEmprestimo.findMany.mockResolvedValue([]);
+
+      await expect(service.calcularSaldoDevedor('e1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('soma o que falta pagar apenas das parcelas nao quitadas', async () => {
+      prisma.emprestimo.findUnique.mockResolvedValue(emprestimo);
+      prisma.parcelaEmprestimo.findMany.mockResolvedValue([
+        { valor: new Prisma.Decimal(110), valorPago: new Prisma.Decimal(110) },
+        { valor: new Prisma.Decimal(110), valorPago: new Prisma.Decimal(30) },
+      ]);
+
+      const saldo = await service.calcularSaldoDevedor('e1');
+      expect(saldo.toNumber()).toBe(80);
+    });
+  });
 });

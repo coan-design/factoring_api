@@ -34,20 +34,59 @@ recebível pode aparecer em itens de negociações **canceladas**. A validação
 `NegociacoesService`, verificando se existe um item vinculado a uma negociação cujo status não é
 `CANCELADA` (ou seja, `EM_ANALISE`, `APROVADA` ou `FINALIZADA` "prendem" o título).
 
+### `ItemNegociacaoEmprestimo`: o empréstimo entra inteiro
+
+`ItemNegociacaoEmprestimo` é uma **tabela de junção pura** (`id`, `negociacaoId`, `emprestimoId`,
+`createdAt`), sem valores próprios. Ao contrário de `ItemNegociacaoRecebivel` (que "congela" um
+`valorConsiderado`/`taxaDesagio` no momento da inclusão), o empréstimo entra **inteiro** na
+negociação: todas as suas `ParcelaEmprestimo` — pagas ou não, inclusive pagamentos anteriores à
+negociação — continuam vinculadas ao `Emprestimo` original, e os totais da negociação leem esses
+valores diretamente. Isso evita duplicar/recalcular juros que já estão embutidos no empréstimo.
+`adicionarEmprestimo()` exige que as parcelas já tenham sido geradas (`gerarParcelas()`), senão o
+`valorTotalReceber` ficaria incompleto.
+
 ### Cálculos financeiros
 
 - `ItemNegociacaoRecebivel.calcularDesagio()`: `valorConsiderado * taxaDesagio * quantidadeDias / 30`
 - `ItemNegociacaoRecebivel.calcularValorLiquido()`: `valorConsiderado - valorDesagio`
-- `ItemNegociacaoEmprestimo.calcularJuros()`: `valorPrincipal * taxaJuros`
-- `ItemNegociacaoEmprestimo.calcularValorTotal()`: `valorPrincipal + valorJuros`
-- `Negociacao.calcularValorLiquido()`: soma dos valores líquidos dos itens (recebível: líquido;
-  empréstimo: total) menos `valorTarifas`
-- `Negociacao.calcularSaldoNegociacao()`: `valorLiquido - valorPago`
+  (`valorConsiderado` = `Recebivel.valorNominal` no momento da inclusão)
+- `Emprestimo.calcularValorTotal()`: soma de `valor` de todas as `ParcelaEmprestimo` geradas
+  (principal + juros)
+- `Emprestimo.calcularSaldoDevedor()`: soma de `(valor - valorPago)` das parcelas **ainda não
+  quitadas** — quanto falta receber desse empréstimo hoje
+- `Negociacao.calcularValorBruto()`: soma(`Emprestimo.valorEmprestado` dos empréstimos vinculados)
+  + soma(`ItemNegociacaoRecebivel.valorLiquido` dos itens) — quanto a factoring desembolsou
+- `Negociacao.calcularValorTotalReceber()`: soma(`Emprestimo.calcularValorTotal()`) +
+  soma(`Recebivel.valorNominal` dos recebíveis vinculados) — quanto se espera receber no total,
+  já com o lucro da operação embutido
+- `Negociacao.calcularValorPago()`: soma(`Recebivel.valorNominal - Recebivel.valorAberto`) +
+  soma(`ParcelaEmprestimo.valorPago` de todas as parcelas dos empréstimos vinculados) — o que já
+  entrou de fato, **incluindo pagamentos anteriores à negociação**
+- `Negociacao.calcularValorAReceber()`: `valorTotalReceber - valorPago - valorTarifas`
 - `Emprestimo.gerarParcelas()`: parcelas fixas mensais; `SIMPLES` distribui juros lineares sobre o
   principal, `COMPOSTO` usa a fórmula de tabela Price (juros compostos sobre o saldo devedor)
 
 Todas essas regras estão implementadas como funções puras e testáveis em `*.rules.ts` dentro de
 cada módulo, e usadas pelos respectivos services — não ficam soltas em controllers.
+
+### Recalculo sob demanda dos totais da negociação
+
+`valorBruto`, `valorTotalReceber`, `valorPago` e `valorAReceber` são **persistidos** em
+`Negociacao` para leitura rápida, mas tratados como cache de um cálculo — nunca escritos "à mão".
+`NegociacoesService` os recalcula (via `calcularTotaisNegociacao()`, em `negociacao.rules.ts`) a
+cada mutação relevante:
+
+- inclusão de item (`adicionarRecebivel`/`adicionarEmprestimo`) ou alteração de `valorTarifas`;
+- pagamento de um recebível vinculado — `RecebiveisService.registrarPagamento()` chama
+  `NegociacoesService.recalcularPorRecebivel()` depois de atualizar o recebível;
+- pagamento de uma parcela de empréstimo vinculado — `ParcelasEmprestimoService.registrarPagamento()`
+  chama `NegociacoesService.recalcularPorEmprestimo()`.
+
+Por isso `RecebiveisModule` e `ParcelasEmprestimoModule` importam `NegociacoesModule` (só nessa
+direção — `NegociacoesModule` não depende de volta). O recálculo só atinge negociações **abertas**
+(`EM_ANALISE`/`APROVADA`); negociações `FINALIZADA`/`CANCELADA` são histórico e não são reescritas.
+Não existe mais um endpoint de "registrar pagamento" direto em `Negociacao` — pagamentos sempre
+entram pelo recebível ou pela parcela de origem, e a negociação reflete isso automaticamente.
 
 ## Estrutura
 
@@ -149,7 +188,7 @@ npm run test:e2e    # e2e (requer PostgreSQL rodando via docker compose + migrat
 
 - `ADMIN`: acesso completo, incluindo gestão de usuários e exclusões.
 - `OPERADOR`: cadastro/edição de clientes, recebíveis, empréstimos e negociações, e operações do
-  fluxo de negócio (ativar/inativar cliente, registrar pagamento, gerar parcelas, aprovar/cancelar
-  /finalizar negociação).
+  fluxo de negócio (ativar/inativar cliente, registrar pagamento de recebível/parcela, gerar
+  parcelas, adicionar itens/aprovar/cancelar/finalizar negociação).
 - `ANALISTA`: apenas leitura (nenhum `@Roles()` restringe os endpoints `GET`, então qualquer perfil
   autenticado pode consultar).

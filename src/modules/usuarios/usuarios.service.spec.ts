@@ -11,7 +11,10 @@ describe('UsuariosService', () => {
     usuario: {
       findUnique: jest.Mock;
       create: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
     };
+    $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -19,7 +22,10 @@ describe('UsuariosService', () => {
       usuario: {
         findUnique: jest.fn(),
         create: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
       },
+      $transaction: jest.fn((operacoes: Promise<unknown>[]) => Promise.all(operacoes)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -27,6 +33,25 @@ describe('UsuariosService', () => {
     }).compile();
 
     service = module.get(UsuariosService);
+  });
+
+  describe('findAll', () => {
+    it('pagina os usuarios e devolve o envelope {data, total, page, pageSize}', async () => {
+      prisma.usuario.findMany.mockResolvedValue([]);
+      prisma.usuario.count.mockResolvedValue(0);
+
+      const resultado = await service.findAll({
+        page: 1,
+        pageSize: 20,
+        skip: 0,
+        take: 20,
+      } as any);
+
+      expect(prisma.usuario.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 0, take: 20 }),
+      );
+      expect(resultado).toEqual({ data: [], total: 0, page: 1, pageSize: 20 });
+    });
   });
 
   describe('create', () => {

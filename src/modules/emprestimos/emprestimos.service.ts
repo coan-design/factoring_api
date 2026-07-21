@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatusParcela } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { montarRespostaPaginada } from '../../common/utils/pagination.util';
 import { CreateEmprestimoDto } from './dto/create-emprestimo.dto';
 import { UpdateEmprestimoDto } from './dto/update-emprestimo.dto';
+import { FindAllEmprestimosQueryDto } from './dto/find-all-emprestimos-query.dto';
 import { calcularSaldoDevedorEmprestimo, calcularValorParcela } from './emprestimo.rules';
 
 function adicionarMeses(data: Date, meses: number): Date {
@@ -27,12 +29,36 @@ export class EmprestimosService {
     return this.findOne(emprestimo.id);
   }
 
-  findAll(clienteId?: string) {
-    return this.prisma.emprestimo.findMany({
-      where: clienteId ? { clienteId } : undefined,
-      include: { parcelas: true },
-      orderBy: { dataContratacao: 'desc' },
-    });
+  async findAll(query: FindAllEmprestimosQueryDto) {
+    const where: Prisma.EmprestimoWhereInput = {
+      ...(query.clienteId ? { clienteId: query.clienteId } : {}),
+      ...(query.comSaldoDevedor === true
+        ? { parcelas: { some: { status: { not: StatusParcela.PAGA } } } }
+        : {}),
+      // "quitado" exige ao menos uma parcela gerada, senao o `every` seria vacuamente verdadeiro
+      // para emprestimos sem parcelas ainda.
+      ...(query.comSaldoDevedor === false
+        ? {
+            AND: [
+              { parcelas: { some: {} } },
+              { parcelas: { every: { status: StatusParcela.PAGA } } },
+            ],
+          }
+        : {}),
+    };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.emprestimo.findMany({
+        where,
+        include: { parcelas: true },
+        orderBy: { dataContratacao: 'desc' },
+        skip: query.skip,
+        take: query.take,
+      }),
+      this.prisma.emprestimo.count({ where }),
+    ]);
+
+    return montarRespostaPaginada(data, total, query);
   }
 
   async findOne(id: string) {

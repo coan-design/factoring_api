@@ -8,8 +8,9 @@ import { NegociacoesService } from '../negociacoes/negociacoes.service';
 describe('RecebiveisService', () => {
   let service: RecebiveisService;
   let prisma: {
-    recebivel: { findUnique: jest.Mock; update: jest.Mock };
+    recebivel: { findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock; count: jest.Mock };
     cliente: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
   };
   let negociacoesService: { recalcularPorRecebivel: jest.Mock };
 
@@ -21,8 +22,9 @@ describe('RecebiveisService', () => {
 
   beforeEach(async () => {
     prisma = {
-      recebivel: { findUnique: jest.fn(), update: jest.fn() },
+      recebivel: { findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
       cliente: { findUnique: jest.fn() },
+      $transaction: jest.fn((operacoes: Promise<unknown>[]) => Promise.all(operacoes)),
     };
     negociacoesService = { recalcularPorRecebivel: jest.fn() };
 
@@ -35,6 +37,33 @@ describe('RecebiveisService', () => {
     }).compile();
 
     service = module.get(RecebiveisService);
+  });
+
+  describe('findAll', () => {
+    it('monta o filtro de intervalo de dataVencimento e o envelope paginado', async () => {
+      prisma.recebivel.findMany.mockResolvedValue([]);
+      prisma.recebivel.count.mockResolvedValue(0);
+
+      const resultado = await service.findAll({
+        page: 1,
+        pageSize: 20,
+        skip: 0,
+        take: 20,
+        tipo: TipoRecebivel.CHEQUE,
+        dataVencimentoInicio: '2026-01-01',
+        dataVencimentoFim: '2026-01-31',
+      } as any);
+
+      expect(prisma.recebivel.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            tipo: TipoRecebivel.CHEQUE,
+            dataVencimento: { gte: new Date('2026-01-01'), lte: new Date('2026-01-31') },
+          },
+        }),
+      );
+      expect(resultado).toEqual({ data: [], total: 0, page: 1, pageSize: 20 });
+    });
   });
 
   describe('registrarPagamento', () => {

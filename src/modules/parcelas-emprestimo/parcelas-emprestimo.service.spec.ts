@@ -6,7 +6,15 @@ import { NegociacoesService } from '../negociacoes/negociacoes.service';
 
 describe('ParcelasEmprestimoService', () => {
   let service: ParcelasEmprestimoService;
-  let prisma: { parcelaEmprestimo: { findUnique: jest.Mock; update: jest.Mock } };
+  let prisma: {
+    parcelaEmprestimo: {
+      findUnique: jest.Mock;
+      update: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
+    };
+    $transaction: jest.Mock;
+  };
   let negociacoesService: { recalcularPorEmprestimo: jest.Mock };
 
   const diasNoFuturo = (dias: number) => {
@@ -16,7 +24,15 @@ describe('ParcelasEmprestimoService', () => {
   };
 
   beforeEach(async () => {
-    prisma = { parcelaEmprestimo: { findUnique: jest.fn(), update: jest.fn() } };
+    prisma = {
+      parcelaEmprestimo: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+      },
+      $transaction: jest.fn((operacoes: Promise<unknown>[]) => Promise.all(operacoes)),
+    };
     negociacoesService = { recalcularPorEmprestimo: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -28,6 +44,26 @@ describe('ParcelasEmprestimoService', () => {
     }).compile();
 
     service = module.get(ParcelasEmprestimoService);
+  });
+
+  describe('findAllByEmprestimo', () => {
+    it('filtra por emprestimoId e devolve o envelope paginado', async () => {
+      prisma.parcelaEmprestimo.findMany.mockResolvedValue([]);
+      prisma.parcelaEmprestimo.count.mockResolvedValue(0);
+
+      const resultado = await service.findAllByEmprestimo({
+        emprestimoId: 'e1',
+        page: 1,
+        pageSize: 20,
+        skip: 0,
+        take: 20,
+      } as any);
+
+      expect(prisma.parcelaEmprestimo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { emprestimoId: 'e1' } }),
+      );
+      expect(resultado).toEqual({ data: [], total: 0, page: 1, pageSize: 20 });
+    });
   });
 
   describe('registrarPagamento', () => {

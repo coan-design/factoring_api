@@ -7,8 +7,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('EmprestimosService', () => {
   let service: EmprestimosService;
   let prisma: {
-    emprestimo: { findUnique: jest.Mock };
+    emprestimo: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock };
     parcelaEmprestimo: { findFirst: jest.Mock; createMany: jest.Mock; findMany: jest.Mock; aggregate: jest.Mock };
+    $transaction: jest.Mock;
   };
 
   const emprestimo = {
@@ -23,13 +24,14 @@ describe('EmprestimosService', () => {
 
   beforeEach(async () => {
     prisma = {
-      emprestimo: { findUnique: jest.fn() },
+      emprestimo: { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn() },
       parcelaEmprestimo: {
         findFirst: jest.fn(),
         createMany: jest.fn(),
         findMany: jest.fn(),
         aggregate: jest.fn(),
       },
+      $transaction: jest.fn((operacoes: Promise<unknown>[]) => Promise.all(operacoes)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -37,6 +39,48 @@ describe('EmprestimosService', () => {
     }).compile();
 
     service = module.get(EmprestimosService);
+  });
+
+  describe('findAll', () => {
+    it('filtra por comSaldoDevedor=true (pelo menos uma parcela nao paga)', async () => {
+      prisma.emprestimo.findMany.mockResolvedValue([]);
+      prisma.emprestimo.count.mockResolvedValue(0);
+
+      await service.findAll({
+        page: 1,
+        pageSize: 20,
+        skip: 0,
+        take: 20,
+        comSaldoDevedor: true,
+      } as any);
+
+      expect(prisma.emprestimo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { parcelas: { some: { status: { not: 'PAGA' } } } },
+        }),
+      );
+    });
+
+    it('filtra por comSaldoDevedor=false (todas as parcelas pagas, e pelo menos uma existe)', async () => {
+      prisma.emprestimo.findMany.mockResolvedValue([]);
+      prisma.emprestimo.count.mockResolvedValue(0);
+
+      await service.findAll({
+        page: 1,
+        pageSize: 20,
+        skip: 0,
+        take: 20,
+        comSaldoDevedor: false,
+      } as any);
+
+      expect(prisma.emprestimo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            AND: [{ parcelas: { some: {} } }, { parcelas: { every: { status: 'PAGA' } } }],
+          },
+        }),
+      );
+    });
   });
 
   describe('gerarParcelas', () => {

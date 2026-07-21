@@ -16,6 +16,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { EmprestimosService } from './emprestimos.service';
 import { CreateEmprestimoDto } from './dto/create-emprestimo.dto';
 import { UpdateEmprestimoDto } from './dto/update-emprestimo.dto';
+import { FindAllEmprestimosQueryDto } from './dto/find-all-emprestimos-query.dto';
 
 @ApiTags('emprestimos')
 @ApiBearerAuth()
@@ -31,8 +32,16 @@ export class EmprestimosController {
 
   @Get()
   @ApiQuery({ name: 'clienteId', required: false })
-  findAll(@Query('clienteId') clienteId?: string) {
-    return this.emprestimosService.findAll(clienteId);
+  @ApiQuery({
+    name: 'comSaldoDevedor',
+    required: false,
+    type: Boolean,
+    description: 'true = com parcelas em aberto; false = quitados',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  findAll(@Query() query: FindAllEmprestimosQueryDto) {
+    return this.emprestimosService.findAll(query);
   }
 
   @Get(':id')

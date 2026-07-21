@@ -42,12 +42,16 @@ describe('NegociacoesService', () => {
         findUniqueOrThrow: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
       },
       recebivel: { findUnique: jest.fn(), update: jest.fn() },
       emprestimo: { findUnique: jest.fn() },
       itemNegociacaoRecebivel: { findFirst: jest.fn(), create: jest.fn(), findMany: jest.fn() },
       itemNegociacaoEmprestimo: { findFirst: jest.fn(), create: jest.fn(), findMany: jest.fn() },
-      $transaction: jest.fn((callback: (tx: any) => any) => callback(prisma)),
+      $transaction: jest.fn((arg: unknown) =>
+        typeof arg === 'function' ? arg(prisma) : Promise.all(arg as Promise<unknown>[]),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -55,6 +59,30 @@ describe('NegociacoesService', () => {
     }).compile();
 
     service = module.get(NegociacoesService);
+  });
+
+  describe('findAll', () => {
+    it('filtra por clienteId/status/tipoNegociacao e devolve o envelope paginado', async () => {
+      prisma.negociacao.findMany.mockResolvedValue([negociacaoEmAnalise]);
+      prisma.negociacao.count.mockResolvedValue(1);
+
+      const resultado = await service.findAll({
+        page: 1,
+        pageSize: 20,
+        skip: 0,
+        take: 20,
+        clienteId: 'c1',
+        status: StatusNegociacao.EM_ANALISE,
+        tipoNegociacao: 'MISTA',
+      } as any);
+
+      expect(prisma.negociacao.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { clienteId: 'c1', status: StatusNegociacao.EM_ANALISE, tipoNegociacao: 'MISTA' },
+        }),
+      );
+      expect(resultado).toEqual({ data: [negociacaoEmAnalise], total: 1, page: 1, pageSize: 20 });
+    });
   });
 
   describe('adicionarRecebivel', () => {

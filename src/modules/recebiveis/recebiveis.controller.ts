@@ -11,12 +11,13 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PerfilUsuario, StatusRecebivel } from '@prisma/client';
+import { PerfilUsuario, StatusRecebivel, TipoRecebivel } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RecebiveisService } from './recebiveis.service';
 import { CreateRecebivelDto } from './dto/create-recebivel.dto';
 import { UpdateRecebivelDto } from './dto/update-recebivel.dto';
 import { RegistrarPagamentoDto } from './dto/registrar-pagamento.dto';
+import { FindAllRecebiveisQueryDto } from './dto/find-all-recebiveis-query.dto';
 
 @ApiTags('recebiveis')
 @ApiBearerAuth()
@@ -33,8 +34,13 @@ export class RecebiveisController {
   @Get()
   @ApiQuery({ name: 'clienteId', required: false })
   @ApiQuery({ name: 'status', enum: StatusRecebivel, required: false })
-  findAll(@Query('clienteId') clienteId?: string, @Query('status') status?: StatusRecebivel) {
-    return this.recebiveisService.findAll(clienteId, status);
+  @ApiQuery({ name: 'tipo', enum: TipoRecebivel, required: false })
+  @ApiQuery({ name: 'dataVencimentoInicio', required: false, type: String })
+  @ApiQuery({ name: 'dataVencimentoFim', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  findAll(@Query() query: FindAllRecebiveisQueryDto) {
+    return this.recebiveisService.findAll(query);
   }
 
   @Get(':id')

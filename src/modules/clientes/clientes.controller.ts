@@ -11,11 +11,12 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PerfilUsuario, StatusCliente } from '@prisma/client';
+import { PerfilUsuario, StatusCliente, TipoCliente } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ClientesService } from './clientes.service';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
+import { FindAllClientesQueryDto } from './dto/find-all-clientes-query.dto';
 
 @ApiTags('clientes')
 @ApiBearerAuth()
@@ -31,8 +32,12 @@ export class ClientesController {
 
   @Get()
   @ApiQuery({ name: 'status', enum: StatusCliente, required: false })
-  findAll(@Query('status') status?: StatusCliente) {
-    return this.clientesService.findAll(status);
+  @ApiQuery({ name: 'tipoCliente', enum: TipoCliente, required: false })
+  @ApiQuery({ name: 'busca', required: false, description: 'Busca por nome ou cpfCnpj' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  findAll(@Query() query: FindAllClientesQueryDto) {
+    return this.clientesService.findAll(query);
   }
 
   @Get(':id')

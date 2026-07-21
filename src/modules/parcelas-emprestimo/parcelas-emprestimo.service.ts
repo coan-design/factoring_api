@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatusParcela } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NegociacoesService } from '../negociacoes/negociacoes.service';
+import { montarRespostaPaginada } from '../../common/utils/pagination.util';
+import { FindAllParcelasQueryDto } from './dto/find-all-parcelas-query.dto';
 import { parcelaEstaQuitada } from '../emprestimos/emprestimo.rules';
 
 @Injectable()
@@ -11,11 +13,20 @@ export class ParcelasEmprestimoService {
     private readonly negociacoesService: NegociacoesService,
   ) {}
 
-  findAllByEmprestimo(emprestimoId: string) {
-    return this.prisma.parcelaEmprestimo.findMany({
-      where: { emprestimoId },
-      orderBy: { numero: 'asc' },
-    });
+  async findAllByEmprestimo(query: FindAllParcelasQueryDto) {
+    const where: Prisma.ParcelaEmprestimoWhereInput = { emprestimoId: query.emprestimoId };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.parcelaEmprestimo.findMany({
+        where,
+        orderBy: { numero: 'asc' },
+        skip: query.skip,
+        take: query.take,
+      }),
+      this.prisma.parcelaEmprestimo.count({ where }),
+    ]);
+
+    return montarRespostaPaginada(data, total, query);
   }
 
   async findOne(id: string) {

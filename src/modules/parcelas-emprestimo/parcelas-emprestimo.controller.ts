@@ -4,6 +4,7 @@ import { PerfilUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ParcelasEmprestimoService } from './parcelas-emprestimo.service';
 import { RegistrarPagamentoParcelaDto } from './dto/registrar-pagamento-parcela.dto';
+import { FindAllParcelasQueryDto } from './dto/find-all-parcelas-query.dto';
 
 @ApiTags('parcelas-emprestimo')
 @ApiBearerAuth()
@@ -13,8 +14,10 @@ export class ParcelasEmprestimoController {
 
   @Get()
   @ApiQuery({ name: 'emprestimoId', required: true })
-  findAllByEmprestimo(@Query('emprestimoId') emprestimoId: string) {
-    return this.parcelasService.findAllByEmprestimo(emprestimoId);
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  findAllByEmprestimo(@Query() query: FindAllParcelasQueryDto) {
+    return this.parcelasService.findAllByEmprestimo(query);
   }
 
   @Get(':id')

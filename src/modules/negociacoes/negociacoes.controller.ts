@@ -11,7 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PerfilUsuario, StatusNegociacao } from '@prisma/client';
+import { PerfilUsuario, StatusNegociacao, TipoNegociacao } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
@@ -20,6 +20,7 @@ import { CreateNegociacaoDto } from './dto/create-negociacao.dto';
 import { UpdateNegociacaoDto } from './dto/update-negociacao.dto';
 import { AdicionarItemRecebivelDto } from './dto/adicionar-item-recebivel.dto';
 import { AdicionarItemEmprestimoDto } from './dto/adicionar-item-emprestimo.dto';
+import { FindAllNegociacoesQueryDto } from './dto/find-all-negociacoes-query.dto';
 
 @ApiTags('negociacoes')
 @ApiBearerAuth()
@@ -36,8 +37,11 @@ export class NegociacoesController {
   @Get()
   @ApiQuery({ name: 'clienteId', required: false })
   @ApiQuery({ name: 'status', enum: StatusNegociacao, required: false })
-  findAll(@Query('clienteId') clienteId?: string, @Query('status') status?: StatusNegociacao) {
-    return this.negociacoesService.findAll(clienteId, status);
+  @ApiQuery({ name: 'tipoNegociacao', enum: TipoNegociacao, required: false })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  findAll(@Query() query: FindAllNegociacoesQueryDto) {
+    return this.negociacoesService.findAll(query);
   }
 
   @Get(':id')

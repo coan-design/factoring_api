@@ -136,6 +136,10 @@ cp .env.example .env
 
 Ajuste `JWT_SECRET` se necessário. O `DATABASE_URL` padrão já casa com o `docker-compose.yml`.
 
+Por padrão, o CORS libera `http://localhost:5173`, `3001` e `4200` (Vite/CRA/Angular). Se o
+frontend rodar em outra origem, defina `CORS_ORIGIN` no `.env` (lista separada por vírgula) —
+veja `resolverCorsOrigins()` em `src/main.ts`.
+
 ### 3. Instalar dependências
 
 ```bash
@@ -154,8 +158,16 @@ npm run prisma:migrate
 npm run prisma:seed
 ```
 
-Cria um usuário `ADMIN` (`admin@factoring.com` / senha `123456`), um cliente, dois recebíveis
-(um cheque e uma duplicata) e um empréstimo.
+Cria:
+- 3 usuários (senha `123456` para todos): `admin@factoring.com` (`ADMIN`),
+  `operador@factoring.com` (`OPERADOR`), `analista@factoring.com` (`ANALISTA`).
+- 1 cliente, com 2 recebíveis avulsos (um `VENCIDO`, um `PENDENTE`) para os badges de destaque.
+- 3 negociações de exemplo, uma em cada estado: `NEG-0001-EM-ANALISE` (mista, com um pagamento
+  parcial de parcela feito **antes** do empréstimo entrar na negociação), `NEG-0002-APROVADA`
+  (recebível) e `NEG-0003-FINALIZADA` (recebível totalmente quitado, `valorAReceber = 0`).
+
+O script é idempotente: rodar de novo não duplica os dados (detecta pela negociação
+`NEG-0001-EM-ANALISE`).
 
 ### 6. Rodar a aplicação
 

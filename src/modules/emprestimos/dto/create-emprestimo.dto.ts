@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { TipoJuros } from '@prisma/client';
-import { IsDateString, IsEnum, IsInt, IsNumber, IsPositive, IsUUID, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsDate, IsEnum, IsInt, IsNumber, IsPositive, IsUUID, Min } from 'class-validator';
 
 export class CreateEmprestimoDto {
   @ApiProperty()
@@ -26,7 +27,8 @@ export class CreateEmprestimoDto {
   @Min(1)
   quantidadeParcelas: number;
 
-  @ApiProperty()
-  @IsDateString()
-  dataContratacao: string;
+  @ApiProperty({ type: String, format: 'date', example: '2026-07-01' })
+  @Type(() => Date)
+  @IsDate()
+  dataContratacao: Date;
 }

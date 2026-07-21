@@ -1,6 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { montarRespostaPaginada } from '../../common/utils/pagination.util';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 
@@ -41,8 +43,18 @@ export class UsuariosService {
     });
   }
 
-  findAll() {
-    return this.prisma.usuario.findMany({ select: SAFE_SELECT, orderBy: { nome: 'asc' } });
+  async findAll(query: PaginationQueryDto) {
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.usuario.findMany({
+        select: SAFE_SELECT,
+        orderBy: { nome: 'asc' },
+        skip: query.skip,
+        take: query.take,
+      }),
+      this.prisma.usuario.count(),
+    ]);
+
+    return montarRespostaPaginada(data, total, query);
   }
 
   async findOne(id: string) {

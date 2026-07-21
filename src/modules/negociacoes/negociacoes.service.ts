@@ -5,10 +5,12 @@ import {
   STATUS_NEGOCIACAO_ABERTOS,
   STATUS_NEGOCIACAO_BLOQUEIA_REUSO,
 } from '../../common/constants/negociacao.constants';
+import { montarRespostaPaginada } from '../../common/utils/pagination.util';
 import { CreateNegociacaoDto } from './dto/create-negociacao.dto';
 import { UpdateNegociacaoDto } from './dto/update-negociacao.dto';
 import { AdicionarItemRecebivelDto } from './dto/adicionar-item-recebivel.dto';
 import { AdicionarItemEmprestimoDto } from './dto/adicionar-item-emprestimo.dto';
+import { FindAllNegociacoesQueryDto } from './dto/find-all-negociacoes-query.dto';
 import { calcularDesagio, calcularTotaisNegociacao, calcularValorLiquidoItemRecebivel } from './negociacao.rules';
 
 const INCLUDE_ITENS = {
@@ -53,15 +55,25 @@ export class NegociacoesService {
     return this.recalcularTotais(this.prisma, negociacao.id);
   }
 
-  findAll(clienteId?: string, status?: StatusNegociacao) {
-    return this.prisma.negociacao.findMany({
-      where: {
-        ...(clienteId ? { clienteId } : {}),
-        ...(status ? { status } : {}),
-      },
-      include: INCLUDE_ITENS,
-      orderBy: { dataNegociacao: 'desc' },
-    });
+  async findAll(query: FindAllNegociacoesQueryDto) {
+    const where: Prisma.NegociacaoWhereInput = {
+      ...(query.clienteId ? { clienteId: query.clienteId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.tipoNegociacao ? { tipoNegociacao: query.tipoNegociacao } : {}),
+    };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.negociacao.findMany({
+        where,
+        include: INCLUDE_ITENS,
+        orderBy: { dataNegociacao: 'desc' },
+        skip: query.skip,
+        take: query.take,
+      }),
+      this.prisma.negociacao.count({ where }),
+    ]);
+
+    return montarRespostaPaginada(data, total, query);
   }
 
   async findOne(id: string) {

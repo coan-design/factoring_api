@@ -1,8 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TipoRecebivel } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
   IsBoolean,
-  IsDateString,
+  IsDate,
   IsEnum,
   IsNumber,
   IsPositive,
@@ -25,13 +26,15 @@ export class CreateRecebivelDto {
   @IsPositive()
   valorNominal: number;
 
-  @ApiProperty()
-  @IsDateString()
-  dataEmissao: string;
+  @ApiProperty({ type: String, format: 'date', example: '2026-06-01' })
+  @Type(() => Date)
+  @IsDate()
+  dataEmissao: Date;
 
-  @ApiProperty()
-  @IsDateString()
-  dataVencimento: string;
+  @ApiProperty({ type: String, format: 'date', example: '2026-08-01' })
+  @Type(() => Date)
+  @IsDate()
+  dataVencimento: Date;
 
   // --- Cheque ---
   @ApiPropertyOptional({ description: 'Obrigatorio quando tipo = CHEQUE' })
@@ -54,10 +57,11 @@ export class CreateRecebivelDto {
   @IsString()
   numeroCheque?: string;
 
-  @ApiPropertyOptional({ description: 'Obrigatorio quando tipo = CHEQUE' })
+  @ApiPropertyOptional({ type: String, format: 'date', description: 'Obrigatorio quando tipo = CHEQUE' })
   @ValidateIf((o) => o.tipo === TipoRecebivel.CHEQUE)
-  @IsDateString()
-  dataBomPara?: string;
+  @Type(() => Date)
+  @IsDate()
+  dataBomPara?: Date;
 
   // --- Duplicata ---
   @ApiPropertyOptional({ description: 'Obrigatorio quando tipo = DUPLICATA' })

@@ -6,6 +6,12 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { ErroDeCampo } from '../utils/validation.util';
+
+interface CorpoDeExcecao {
+  message?: string | string[];
+  errors?: ErroDeCampo[];
+}
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -20,18 +26,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
       : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const body = isHttpException ? exception.getResponse() : null;
+    const corpo: CorpoDeExcecao | null =
+      body && typeof body === 'object' ? (body as CorpoDeExcecao) : null;
+
     const message =
-      body && typeof body === 'object' && 'message' in body
-        ? (body as { message: string | string[] }).message
-        : isHttpException
-          ? exception.message
-          : 'Erro interno do servidor';
+      corpo?.message ?? (isHttpException ? exception.message : 'Erro interno do servidor');
 
     response.status(status).json({
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
       message,
+      // Presente somente quando a excecao veio do ValidationPipe (400 de DTO invalido).
+      ...(corpo?.errors ? { errors: corpo.errors } : {}),
     });
   }
 }

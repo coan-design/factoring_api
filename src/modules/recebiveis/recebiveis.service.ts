@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { StatusRecebivel } from '@prisma/client';
+import { Prisma, StatusRecebivel } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NegociacoesService } from '../negociacoes/negociacoes.service';
+import { montarRespostaPaginada } from '../../common/utils/pagination.util';
 import { CreateRecebivelDto } from './dto/create-recebivel.dto';
 import { UpdateRecebivelDto } from './dto/update-recebivel.dto';
+import { FindAllRecebiveisQueryDto } from './dto/find-all-recebiveis-query.dto';
 import { calcularValorAbertoAposPagamento, estaQuitado, estaVencido } from './recebivel.rules';
 
 @Injectable()
@@ -28,14 +30,32 @@ export class RecebiveisService {
     });
   }
 
-  findAll(clienteId?: string, status?: StatusRecebivel) {
-    return this.prisma.recebivel.findMany({
-      where: {
-        ...(clienteId ? { clienteId } : {}),
-        ...(status ? { status } : {}),
-      },
-      orderBy: { dataVencimento: 'asc' },
-    });
+  async findAll(query: FindAllRecebiveisQueryDto) {
+    const where: Prisma.RecebivelWhereInput = {
+      ...(query.clienteId ? { clienteId: query.clienteId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.tipo ? { tipo: query.tipo } : {}),
+      ...(query.dataVencimentoInicio || query.dataVencimentoFim
+        ? {
+            dataVencimento: {
+              ...(query.dataVencimentoInicio ? { gte: new Date(query.dataVencimentoInicio) } : {}),
+              ...(query.dataVencimentoFim ? { lte: new Date(query.dataVencimentoFim) } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.recebivel.findMany({
+        where,
+        orderBy: { dataVencimento: 'asc' },
+        skip: query.skip,
+        take: query.take,
+      }),
+      this.prisma.recebivel.count({ where }),
+    ]);
+
+    return montarRespostaPaginada(data, total, query);
   }
 
   async findOne(id: string) {

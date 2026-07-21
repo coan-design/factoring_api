@@ -11,10 +11,13 @@ describe('ClientesService', () => {
       findUnique: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
     };
     negociacao: {
       findFirst: jest.Mock;
     };
+    $transaction: jest.Mock;
   };
 
   const clienteAtivo = { id: 'c1', nome: 'Cliente 1', status: StatusCliente.ATIVO };
@@ -26,10 +29,13 @@ describe('ClientesService', () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
       },
       negociacao: {
         findFirst: jest.fn(),
       },
+      $transaction: jest.fn((operacoes: Promise<unknown>[]) => Promise.all(operacoes)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -37,6 +43,58 @@ describe('ClientesService', () => {
     }).compile();
 
     service = module.get(ClientesService);
+  });
+
+  describe('findAll', () => {
+    it('retorna o envelope paginado com data/total/page/pageSize', async () => {
+      prisma.cliente.findMany.mockResolvedValue([clienteAtivo]);
+      prisma.cliente.count.mockResolvedValue(1);
+
+      const resultado = await service.findAll({ page: 2, pageSize: 10, skip: 10, take: 10 } as any);
+
+      expect(resultado).toEqual({ data: [clienteAtivo], total: 1, page: 2, pageSize: 10 });
+      expect(prisma.cliente.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 10, take: 10 }),
+      );
+    });
+
+    it('monta o filtro OR de busca textual por nome/cpfCnpj', async () => {
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.cliente.count.mockResolvedValue(0);
+
+      await service.findAll({ page: 1, pageSize: 20, skip: 0, take: 20, busca: 'joao' } as any);
+
+      expect(prisma.cliente.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { nome: { contains: 'joao', mode: 'insensitive' } },
+              { cpfCnpj: { contains: 'joao', mode: 'insensitive' } },
+            ],
+          },
+        }),
+      );
+    });
+
+    it('combina filtro de status e tipoCliente', async () => {
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.cliente.count.mockResolvedValue(0);
+
+      await service.findAll({
+        page: 1,
+        pageSize: 20,
+        skip: 0,
+        take: 20,
+        status: StatusCliente.ATIVO,
+        tipoCliente: 'PESSOA_JURIDICA',
+      } as any);
+
+      expect(prisma.cliente.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: StatusCliente.ATIVO, tipoCliente: 'PESSOA_JURIDICA' },
+        }),
+      );
+    });
   });
 
   describe('findOne', () => {

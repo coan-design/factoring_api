@@ -1,9 +1,11 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { StatusCliente } from '@prisma/client';
+import { Prisma, StatusCliente } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { STATUS_NEGOCIACAO_ABERTOS } from '../../common/constants/negociacao.constants';
+import { montarRespostaPaginada } from '../../common/utils/pagination.util';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
+import { FindAllClientesQueryDto } from './dto/find-all-clientes-query.dto';
 
 @Injectable()
 export class ClientesService {
@@ -21,12 +23,32 @@ export class ClientesService {
     });
   }
 
-  findAll(status?: StatusCliente) {
-    return this.prisma.cliente.findMany({
-      where: status ? { status } : undefined,
-      include: { endereco: true },
-      orderBy: { nome: 'asc' },
-    });
+  async findAll(query: FindAllClientesQueryDto) {
+    const where: Prisma.ClienteWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.tipoCliente ? { tipoCliente: query.tipoCliente } : {}),
+      ...(query.busca
+        ? {
+            OR: [
+              { nome: { contains: query.busca, mode: 'insensitive' } },
+              { cpfCnpj: { contains: query.busca, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.cliente.findMany({
+        where,
+        include: { endereco: true },
+        orderBy: { nome: 'asc' },
+        skip: query.skip,
+        take: query.take,
+      }),
+      this.prisma.cliente.count({ where }),
+    ]);
+
+    return montarRespostaPaginada(data, total, query);
   }
 
   async findOne(id: string) {

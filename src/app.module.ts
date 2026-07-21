@@ -12,6 +12,7 @@ import { RecebiveisModule } from './modules/recebiveis/recebiveis.module';
 import { EmprestimosModule } from './modules/emprestimos/emprestimos.module';
 import { ParcelasEmprestimoModule } from './modules/parcelas-emprestimo/parcelas-emprestimo.module';
 import { NegociacoesModule } from './modules/negociacoes/negociacoes.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { NegociacoesModule } from './modules/negociacoes/negociacoes.module';
     EmprestimosModule,
     ParcelasEmprestimoModule,
     NegociacoesModule,
+    DashboardModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

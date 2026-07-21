@@ -17,11 +17,15 @@
       "Bash(sudo -n true)",
       "Bash(DATABASE_URL=\"postgresql://user:pass@localhost:5432/factoring?schema=public\" npx prisma validate --schema=prisma/schema.prisma)",
       "Read(//tmp/**)",
-      "Bash(rm -f /tmp/claude-1000/-home-ana-laura-coan-Documentos-factoring-v2-0-factoring-api-v2-0/5e2fa2a3-24a5-4b00-a963-532bfb43d4b1/scratchpad/schema.before.prisma /tmp/prisma_diff_err.log)"
+      "Bash(rm -f /tmp/claude-1000/-home-ana-laura-coan-Documentos-factoring-v2-0-factoring-api-v2-0/5e2fa2a3-24a5-4b00-a963-532bfb43d4b1/scratchpad/schema.before.prisma /tmp/prisma_diff_err.log)",
+      "Bash(mkdir -p /home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/src/common/dto /home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/src/common/interfaces /home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/src/common/utils)",
+      "Bash(grep -n \"get\\('/clientes'\\)\\\\|\\\\.get\\(\\\\`/clientes\" /home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/test/auth-clientes.e2e-spec.ts)",
+      "Bash(npx jest *)"
     ],
     "additionalDirectories": [
       "/home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0",
-      "/tmp"
+      "/tmp",
+      "/home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/src/common"
     ]
   }
 }

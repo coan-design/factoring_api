@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { StatusRecebivel, TipoRecebivel } from '@prisma/client';
 import { RecebiveisService } from './recebiveis.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { NegociacoesService } from '../negociacoes/negociacoes.service';
 
 describe('RecebiveisService', () => {
@@ -13,6 +14,7 @@ describe('RecebiveisService', () => {
     $transaction: jest.Mock;
   };
   let negociacoesService: { recalcularPorRecebivel: jest.Mock };
+  let storageService: { upload: jest.Mock };
 
   const diasNoFuturo = (dias: number) => {
     const data = new Date();
@@ -27,12 +29,14 @@ describe('RecebiveisService', () => {
       $transaction: jest.fn((operacoes: Promise<unknown>[]) => Promise.all(operacoes)),
     };
     negociacoesService = { recalcularPorRecebivel: jest.fn() };
+    storageService = { upload: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RecebiveisService,
         { provide: PrismaService, useValue: prisma },
         { provide: NegociacoesService, useValue: negociacoesService },
+        { provide: StorageService, useValue: storageService },
       ],
     }).compile();
 

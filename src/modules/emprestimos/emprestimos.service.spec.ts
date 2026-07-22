@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Prisma, TipoJuros } from '@prisma/client';
 import { EmprestimosService } from './emprestimos.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 
 describe('EmprestimosService', () => {
   let service: EmprestimosService;
@@ -11,6 +12,7 @@ describe('EmprestimosService', () => {
     parcelaEmprestimo: { findFirst: jest.Mock; createMany: jest.Mock; findMany: jest.Mock; aggregate: jest.Mock };
     $transaction: jest.Mock;
   };
+  let storageService: { upload: jest.Mock };
 
   const emprestimo = {
     id: 'e1',
@@ -33,9 +35,14 @@ describe('EmprestimosService', () => {
       },
       $transaction: jest.fn((operacoes: Promise<unknown>[]) => Promise.all(operacoes)),
     };
+    storageService = { upload: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [EmprestimosService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        EmprestimosService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: StorageService, useValue: storageService },
+      ],
     }).compile();
 
     service = module.get(EmprestimosService);

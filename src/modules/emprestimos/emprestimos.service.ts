@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatusParcela } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { montarRespostaPaginada } from '../../common/utils/pagination.util';
 import { CreateEmprestimoDto } from './dto/create-emprestimo.dto';
 import { UpdateEmprestimoDto } from './dto/update-emprestimo.dto';
@@ -15,7 +16,10 @@ function adicionarMeses(data: Date, meses: number): Date {
 
 @Injectable()
 export class EmprestimosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storageService: StorageService,
+  ) {}
 
   async create(dto: CreateEmprestimoDto) {
     const cliente = await this.prisma.cliente.findUnique({ where: { id: dto.clienteId } });
@@ -153,5 +157,15 @@ export class EmprestimosService {
     }
 
     return calcularSaldoDevedorEmprestimo(parcelas);
+  }
+
+  /** Sobe o contrato assinado (imagem ou PDF) e grava a URL retornada pelo storage. */
+  async salvarContrato(id: string, arquivo: Express.Multer.File) {
+    await this.findOne(id);
+
+    const url = await this.storageService.upload(`emprestimos/${id}`, arquivo);
+    await this.prisma.emprestimo.update({ where: { id }, data: { contratoUrl: url } });
+
+    return { url };
   }
 }

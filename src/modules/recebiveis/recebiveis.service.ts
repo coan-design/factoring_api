@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatusRecebivel } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { NegociacoesService } from '../negociacoes/negociacoes.service';
 import { montarRespostaPaginada } from '../../common/utils/pagination.util';
 import { CreateRecebivelDto } from './dto/create-recebivel.dto';
 import { UpdateRecebivelDto } from './dto/update-recebivel.dto';
 import { FindAllRecebiveisQueryDto } from './dto/find-all-recebiveis-query.dto';
+import { LadoDocumentoRecebivel } from './dto/upload-documento-recebivel.dto';
 import { calcularValorAbertoAposPagamento, estaQuitado, estaVencido } from './recebivel.rules';
 
 @Injectable()
@@ -13,6 +15,7 @@ export class RecebiveisService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly negociacoesService: NegociacoesService,
+    private readonly storageService: StorageService,
   ) {}
 
   async create(dto: CreateRecebivelDto) {
@@ -126,5 +129,17 @@ export class RecebiveisService {
     await this.negociacoesService.recalcularPorRecebivel(id);
 
     return atualizado;
+  }
+
+  /** Sobe a imagem de frente/verso do recebivel e grava a URL retornada pelo storage. */
+  async salvarDocumento(id: string, lado: LadoDocumentoRecebivel, arquivo: Express.Multer.File) {
+    await this.findOne(id);
+
+    const url = await this.storageService.upload(`recebiveis/${id}`, arquivo);
+    const campo = lado === LadoDocumentoRecebivel.FRENTE ? 'documentoFrenteUrl' : 'documentoVersoUrl';
+
+    await this.prisma.recebivel.update({ where: { id }, data: { [campo]: url } });
+
+    return { url };
   }
 }

@@ -20,7 +20,13 @@
       "Bash(rm -f /tmp/claude-1000/-home-ana-laura-coan-Documentos-factoring-v2-0-factoring-api-v2-0/5e2fa2a3-24a5-4b00-a963-532bfb43d4b1/scratchpad/schema.before.prisma /tmp/prisma_diff_err.log)",
       "Bash(mkdir -p /home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/src/common/dto /home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/src/common/interfaces /home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/src/common/utils)",
       "Bash(grep -n \"get\\('/clientes'\\)\\\\|\\\\.get\\(\\\\`/clientes\" /home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0/test/auth-clientes.e2e-spec.ts)",
-      "Bash(npx jest *)"
+      "Bash(npx jest *)",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "Bash(bash -lc 'which node npm 2>&1; node -v 2>&1; npm -v 2>&1')",
+      "Bash(bash -lc 'ls node_modules/path-scurry 2>&1; echo \"---\"; ls node_modules/.package-lock.json 2>&1 | head -1; echo \"---\"; du -sh node_modules 2>&1')",
+      "Bash(bash -lc 'ls -la node_modules/path-scurry/dist 2>&1; echo \"---\"; ls -la node_modules/path-scurry/dist/commonjs 2>&1; echo \"---package.json exports---\"; cat node_modules/path-scurry/package.json 2>&1 | head -40')",
+      "Bash(bash -lc 'cat .gitignore 2>&1 | grep -n node_modules; ls package-lock.json 2>&1')",
+      "Bash(echo \"exit: $?\")"
     ],
     "additionalDirectories": [
       "/home/ana-laura-coan/Documentos/factoring-v2.0/factoring_api_v2.0",

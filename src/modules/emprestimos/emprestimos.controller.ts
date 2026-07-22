@@ -6,17 +6,24 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseFilePipeBuilder,
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PerfilUsuario } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { EmprestimosService } from './emprestimos.service';
 import { CreateEmprestimoDto } from './dto/create-emprestimo.dto';
 import { UpdateEmprestimoDto } from './dto/update-emprestimo.dto';
 import { FindAllEmprestimosQueryDto } from './dto/find-all-emprestimos-query.dto';
+
+const TIPOS_CONTRATO_ACEITOS = /^(image\/jpeg|image\/png|application\/pdf)$/;
+const TAMANHO_MAXIMO_ARQUIVO = 10 * 1024 * 1024;
 
 @ApiTags('emprestimos')
 @ApiBearerAuth()
@@ -71,6 +78,29 @@ export class EmprestimosController {
   @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
   gerarParcelas(@Param('id') id: string) {
     return this.emprestimosService.gerarParcelas(id);
+  }
+
+  @Post(':id/contrato')
+  @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
+  @UseInterceptors(FileInterceptor('arquivo'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { arquivo: { type: 'string', format: 'binary' } },
+    },
+  })
+  uploadContrato(
+    @Param('id') id: string,
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: TIPOS_CONTRATO_ACEITOS })
+        .addMaxSizeValidator({ maxSize: TAMANHO_MAXIMO_ARQUIVO })
+        .build({ errorHttpStatusCode: HttpStatus.BAD_REQUEST }),
+    )
+    arquivo: Express.Multer.File,
+  ) {
+    return this.emprestimosService.salvarContrato(id, arquivo);
   }
 
   @Delete(':id')

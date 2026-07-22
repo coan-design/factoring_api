@@ -164,10 +164,16 @@ model Recebivel {
   conta           String?
   numeroCheque    String?
   dataBomPara     DateTime?       @db.Date
+  emitente        String?
 
   // --- campos específicos de Duplicata (nulos quando tipo = CHEQUE) ---
   numeroNotaFiscal String?
   aceite            Boolean?
+  sacado            String?
+
+  // --- documentos anexados (frente/verso do cheque, ou da duplicata/nota fiscal) ---
+  documentoFrenteUrl String?
+  documentoVersoUrl  String?
 
   clienteId       String
   cliente         Cliente         @relation(fields: [clienteId], references: [id])
@@ -193,6 +199,7 @@ model Emprestimo {
   taxaJuros           Decimal    @db.Decimal(9, 6)
   quantidadeParcelas  Int
   dataContratacao     DateTime   @db.Date
+  contratoUrl         String?
 
   clienteId           String
   cliente             Cliente    @relation(fields: [clienteId], references: [id])

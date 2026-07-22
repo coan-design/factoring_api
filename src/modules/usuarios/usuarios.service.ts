@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
@@ -90,5 +95,30 @@ export class UsuariosService {
   /** Implementa Usuario.autenticar(senha): compara a senha informada com o hash armazenado. */
   async autenticar(senha: string, senhaHash: string): Promise<boolean> {
     return bcrypt.compare(senha, senhaHash);
+  }
+
+  /** Autoatendimento: usuario logado altera o proprio nome (nao email, nao perfil). */
+  async atualizarNomeProprio(id: string, nome: string) {
+    await this.findOne(id);
+    return this.prisma.usuario.update({ where: { id }, data: { nome }, select: SAFE_SELECT });
+  }
+
+  /**
+   * Autoatendimento: usuario logado troca a propria senha, exigindo confirmacao da senha
+   * atual. Fluxo separado do PATCH /usuarios/:id que o ADMIN usa (esse troca sem confirmar).
+   */
+  async alterarSenhaPropria(id: string, senhaAtual: string, novaSenha: string) {
+    const usuario = await this.prisma.usuario.findUnique({ where: { id } });
+    if (!usuario) {
+      throw new NotFoundException('Usuario nao encontrado');
+    }
+
+    const senhaValida = await this.autenticar(senhaAtual, usuario.senhaHash);
+    if (!senhaValida) {
+      throw new UnauthorizedException('Senha atual incorreta');
+    }
+
+    const senhaHash = await bcrypt.hash(novaSenha, SALT_ROUNDS);
+    return this.prisma.usuario.update({ where: { id }, data: { senhaHash }, select: SAFE_SELECT });
   }
 }

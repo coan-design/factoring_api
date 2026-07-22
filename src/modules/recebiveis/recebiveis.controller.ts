@@ -6,11 +6,15 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseFilePipeBuilder,
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PerfilUsuario, StatusRecebivel, TipoRecebivel } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RecebiveisService } from './recebiveis.service';
@@ -18,6 +22,10 @@ import { CreateRecebivelDto } from './dto/create-recebivel.dto';
 import { UpdateRecebivelDto } from './dto/update-recebivel.dto';
 import { RegistrarPagamentoDto } from './dto/registrar-pagamento.dto';
 import { FindAllRecebiveisQueryDto } from './dto/find-all-recebiveis-query.dto';
+import { UploadDocumentoRecebivelDto } from './dto/upload-documento-recebivel.dto';
+
+const TIPOS_IMAGEM_ACEITOS = /^(image\/jpeg|image\/png)$/;
+const TAMANHO_MAXIMO_ARQUIVO = 10 * 1024 * 1024;
 
 @ApiTags('recebiveis')
 @ApiBearerAuth()
@@ -68,6 +76,33 @@ export class RecebiveisController {
   @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
   registrarPagamento(@Param('id') id: string, @Body() dto: RegistrarPagamentoDto) {
     return this.recebiveisService.registrarPagamento(id, dto.valor);
+  }
+
+  @Post(':id/documentos')
+  @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
+  @UseInterceptors(FileInterceptor('arquivo'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        lado: { type: 'string', enum: ['FRENTE', 'VERSO'] },
+        arquivo: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  uploadDocumento(
+    @Param('id') id: string,
+    @Body() dto: UploadDocumentoRecebivelDto,
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: TIPOS_IMAGEM_ACEITOS })
+        .addMaxSizeValidator({ maxSize: TAMANHO_MAXIMO_ARQUIVO })
+        .build({ errorHttpStatusCode: HttpStatus.BAD_REQUEST }),
+    )
+    arquivo: Express.Multer.File,
+  ) {
+    return this.recebiveisService.salvarDocumento(id, dto.lado, arquivo);
   }
 
   @Delete(':id')

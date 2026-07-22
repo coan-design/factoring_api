@@ -63,6 +63,11 @@ export class CreateRecebivelDto {
   @IsDate()
   dataBomPara?: Date;
 
+  @ApiPropertyOptional({ description: 'Nome de quem assinou o cheque. Obrigatorio quando tipo = CHEQUE' })
+  @ValidateIf((o) => o.tipo === TipoRecebivel.CHEQUE)
+  @IsString()
+  emitente?: string;
+
   // --- Duplicata ---
   @ApiPropertyOptional({ description: 'Obrigatorio quando tipo = DUPLICATA' })
   @ValidateIf((o) => o.tipo === TipoRecebivel.DUPLICATA)
@@ -73,4 +78,9 @@ export class CreateRecebivelDto {
   @ValidateIf((o) => o.tipo === TipoRecebivel.DUPLICATA)
   @IsBoolean()
   aceite?: boolean;
+
+  @ApiPropertyOptional({ description: 'Empresa devedora da duplicata. Obrigatorio quando tipo = DUPLICATA' })
+  @ValidateIf((o) => o.tipo === TipoRecebivel.DUPLICATA)
+  @IsString()
+  sacado?: string;
 }

@@ -18,6 +18,7 @@ describe('NegociacoesService', () => {
     valorAReceber: new Prisma.Decimal(0),
     itensRecebivel: [],
     itensEmprestimo: [],
+    itensAjuste: [],
   };
 
   const recebivelDoCliente = {
@@ -50,6 +51,11 @@ describe('NegociacoesService', () => {
       emprestimo: { findUnique: jest.fn() },
       itemNegociacaoRecebivel: { findFirst: jest.fn(), create: jest.fn(), findMany: jest.fn() },
       itemNegociacaoEmprestimo: { findFirst: jest.fn(), create: jest.fn(), findMany: jest.fn() },
+      itemNegociacaoAjuste: {
+        create: jest.fn(),
+        findUnique: jest.fn(),
+        delete: jest.fn(),
+      },
       $transaction: jest.fn((arg: unknown) =>
         typeof arg === 'function' ? arg(prisma) : Promise.all(arg as Promise<unknown>[]),
       ),
@@ -199,6 +205,113 @@ describe('NegociacoesService', () => {
       expect(prisma.itemNegociacaoEmprestimo.create).toHaveBeenCalledWith({
         data: { negociacaoId: 'n1', emprestimoId: 'e1' },
       });
+    });
+  });
+
+  describe('adicionarAjuste', () => {
+    const dto = { tipo: 'ACRESCIMO', descricao: 'Multa por atraso', valor: 100 };
+
+    it('lanca NotFoundException se a negociacao nao existe', async () => {
+      prisma.negociacao.findUnique.mockResolvedValue(null);
+      await expect(service.adicionarAjuste('n1', dto as any, 'u1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('lanca ConflictException se a negociacao esta FINALIZADA', async () => {
+      prisma.negociacao.findUnique.mockResolvedValue({
+        ...negociacaoEmAnalise,
+        status: StatusNegociacao.FINALIZADA,
+      });
+
+      await expect(service.adicionarAjuste('n1', dto as any, 'u1')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.itemNegociacaoAjuste.create).not.toHaveBeenCalled();
+    });
+
+    it('lanca ConflictException se a negociacao esta CANCELADA', async () => {
+      prisma.negociacao.findUnique.mockResolvedValue({
+        ...negociacaoEmAnalise,
+        status: StatusNegociacao.CANCELADA,
+      });
+
+      await expect(service.adicionarAjuste('n1', dto as any, 'u1')).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('permite lancar ajuste em negociacao APROVADA (nao exige EM_ANALISE)', async () => {
+      prisma.negociacao.findUnique.mockResolvedValue({
+        ...negociacaoEmAnalise,
+        status: StatusNegociacao.APROVADA,
+      });
+      prisma.itemNegociacaoAjuste.create.mockResolvedValue({});
+      prisma.negociacao.findUniqueOrThrow.mockResolvedValue(negociacaoEmAnalise);
+      prisma.negociacao.update.mockImplementation(({ data }: any) => Promise.resolve(data));
+
+      await service.adicionarAjuste('n1', dto as any, 'u1');
+
+      expect(prisma.itemNegociacaoAjuste.create).toHaveBeenCalledWith({
+        data: { negociacaoId: 'n1', usuarioId: 'u1', tipo: 'ACRESCIMO', descricao: 'Multa por atraso', valor: 100 },
+      });
+    });
+
+    it('persiste usuarioId de quem lancou e recalcula os totais', async () => {
+      prisma.negociacao.findUnique.mockResolvedValue(negociacaoEmAnalise);
+      prisma.itemNegociacaoAjuste.create.mockResolvedValue({});
+      prisma.negociacao.findUniqueOrThrow.mockResolvedValue({
+        ...negociacaoEmAnalise,
+        itensAjuste: [{ tipo: 'ACRESCIMO', valor: 100 }],
+      });
+      prisma.negociacao.update.mockImplementation(({ data }: any) => Promise.resolve(data));
+
+      const resultado = await service.adicionarAjuste('n1', dto as any, 'u1');
+
+      expect(prisma.itemNegociacaoAjuste.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ usuarioId: 'u1' }) }),
+      );
+      expect(resultado.valorAReceber.toNumber()).toBe(100);
+    });
+  });
+
+  describe('removerAjuste', () => {
+    it('lanca NotFoundException se a negociacao nao existe', async () => {
+      prisma.negociacao.findUnique.mockResolvedValue(null);
+      await expect(service.removerAjuste('n1', 'item1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanca ConflictException se a negociacao esta em status terminal', async () => {
+      prisma.negociacao.findUnique.mockResolvedValue({
+        ...negociacaoEmAnalise,
+        status: StatusNegociacao.CANCELADA,
+      });
+
+      await expect(service.removerAjuste('n1', 'item1')).rejects.toThrow(ConflictException);
+      expect(prisma.itemNegociacaoAjuste.delete).not.toHaveBeenCalled();
+    });
+
+    it('lanca NotFoundException se o ajuste nao existe ou nao pertence a esta negociacao', async () => {
+      prisma.negociacao.findUnique.mockResolvedValue(negociacaoEmAnalise);
+      prisma.itemNegociacaoAjuste.findUnique.mockResolvedValue({
+        id: 'item1',
+        negociacaoId: 'outra-negociacao',
+      });
+
+      await expect(service.removerAjuste('n1', 'item1')).rejects.toThrow(NotFoundException);
+      expect(prisma.itemNegociacaoAjuste.delete).not.toHaveBeenCalled();
+    });
+
+    it('remove o ajuste e recalcula os totais', async () => {
+      prisma.negociacao.findUnique.mockResolvedValue(negociacaoEmAnalise);
+      prisma.itemNegociacaoAjuste.findUnique.mockResolvedValue({ id: 'item1', negociacaoId: 'n1' });
+      prisma.itemNegociacaoAjuste.delete.mockResolvedValue({});
+      prisma.negociacao.findUniqueOrThrow.mockResolvedValue(negociacaoEmAnalise);
+      prisma.negociacao.update.mockImplementation(({ data }: any) => Promise.resolve(data));
+
+      await service.removerAjuste('n1', 'item1');
+
+      expect(prisma.itemNegociacaoAjuste.delete).toHaveBeenCalledWith({ where: { id: 'item1' } });
     });
   });
 

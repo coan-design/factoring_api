@@ -272,6 +272,46 @@ describe('Wizard de Negociacao (e2e)', () => {
     await http.patch(`/negociacoes/${negociacaoConcorrenteId}/cancelar`).set(auth()).expect(200);
   });
 
+  it('lanca ACRESCIMO e DESCONTO numa negociacao a parte e confere valorAReceber final', async () => {
+    const negociacaoAjuste = await http
+      .post('/negociacoes')
+      .set(auth())
+      .send({
+        numero: `NEG-WIZARD-AJUSTE-${sufixo}`,
+        titulo: 'Negociacao so para testar ajustes',
+        clienteId: clienteAId,
+        tipoNegociacao: 'RECEBIVEIS',
+        formaPagamento: 'PIX',
+        valorTarifas: 0,
+      })
+      .expect(201);
+    const negociacaoAjusteId = negociacaoAjuste.body.id;
+
+    const comAcrescimo = await http
+      .post(`/negociacoes/${negociacaoAjusteId}/itens-ajuste`)
+      .set(auth())
+      .send({ tipo: 'ACRESCIMO', descricao: 'Multa por atraso', valor: 300 })
+      .expect(201);
+    expect(Number(comAcrescimo.body.valorAReceber)).toBe(300);
+
+    const comDesconto = await http
+      .post(`/negociacoes/${negociacaoAjusteId}/itens-ajuste`)
+      .set(auth())
+      .send({ tipo: 'DESCONTO', descricao: 'Cortesia comercial', valor: 50 })
+      .expect(201);
+    expect(Number(comDesconto.body.valorAReceber)).toBe(250);
+
+    const detalhe = await http.get(`/negociacoes/${negociacaoAjusteId}`).set(auth()).expect(200);
+    expect(detalhe.body.itensAjuste).toHaveLength(2);
+
+    const itemDesconto = detalhe.body.itensAjuste.find((item: any) => item.tipo === 'DESCONTO');
+    const removido = await http
+      .delete(`/negociacoes/${negociacaoAjusteId}/itens-ajuste/${itemDesconto.id}`)
+      .set(auth())
+      .expect(200);
+    expect(Number(removido.body.valorAReceber)).toBe(300);
+  });
+
   it('aprova a negociacao', async () => {
     const response = await http
       .patch(`/negociacoes/${negociacaoId}/aprovar`)

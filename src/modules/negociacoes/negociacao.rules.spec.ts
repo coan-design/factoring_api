@@ -3,7 +3,7 @@ import { calcularTotaisNegociacao } from './negociacao.rules';
 describe('negociacao.rules', () => {
   describe('calcularTotaisNegociacao', () => {
     it('retorna zeros (menos as tarifas) quando nao ha itens', () => {
-      const totais = calcularTotaisNegociacao([], [], 50);
+      const totais = calcularTotaisNegociacao([], [], [], 50);
       expect(totais.valorBruto.toNumber()).toBe(0);
       expect(totais.valorTotalReceber.toNumber()).toBe(0);
       expect(totais.valorPago.toNumber()).toBe(0);
@@ -17,6 +17,7 @@ describe('negociacao.rules', () => {
             recebivel: { valorNominal: 1000, valorAberto: 1000, valorLiquido: 970 }, // 1000 nominal - 30 desagio
           },
         ],
+        [],
         [],
         0,
       );
@@ -35,6 +36,7 @@ describe('negociacao.rules', () => {
             recebivel: { valorNominal: 1000, valorAberto: 600, valorLiquido: 970 },
           },
         ],
+        [],
         [],
         0,
       );
@@ -57,6 +59,7 @@ describe('negociacao.rules', () => {
             },
           },
         ],
+        [],
         0,
       );
 
@@ -83,6 +86,7 @@ describe('negociacao.rules', () => {
             },
           },
         ],
+        [],
         0,
       );
 
@@ -115,6 +119,7 @@ describe('negociacao.rules', () => {
             },
           },
         ],
+        [],
         20, // tarifas
       );
 
@@ -126,6 +131,57 @@ describe('negociacao.rules', () => {
       expect(totais.valorPago.toNumber()).toBe(550);
       // aReceber = 1830 - 550 - 20
       expect(totais.valorAReceber.toNumber()).toBe(1260);
+    });
+
+    it('ACRESCIMO aumenta valorAReceber, independente de valorTarifas', () => {
+      const totais = calcularTotaisNegociacao(
+        [{ recebivel: { valorNominal: 1000, valorAberto: 1000, valorLiquido: 1000 } }],
+        [],
+        [{ tipo: 'ACRESCIMO', valor: 100 }],
+        0,
+      );
+
+      // aReceber = 1000 - 0 - 0 - 0 + 100
+      expect(totais.valorAReceber.toNumber()).toBe(1100);
+    });
+
+    it('DESCONTO reduz valorAReceber, somando-se ao efeito de valorTarifas', () => {
+      const totais = calcularTotaisNegociacao(
+        [{ recebivel: { valorNominal: 1000, valorAberto: 1000, valorLiquido: 1000 } }],
+        [],
+        [{ tipo: 'DESCONTO', valor: 60 }],
+        20, // tarifas
+      );
+
+      // aReceber = 1000 - 0 - 20 - 60 + 0
+      expect(totais.valorAReceber.toNumber()).toBe(920);
+    });
+
+    it('combina ACRESCIMO e DESCONTO no mesmo calculo', () => {
+      const totais = calcularTotaisNegociacao(
+        [{ recebivel: { valorNominal: 1000, valorAberto: 1000, valorLiquido: 1000 } }],
+        [],
+        [
+          { tipo: 'ACRESCIMO', valor: 100 },
+          { tipo: 'DESCONTO', valor: 30 },
+          { tipo: 'ACRESCIMO', valor: 20 },
+        ],
+        0,
+      );
+
+      // aReceber = 1000 - 0 - 0 - 30 + (100 + 20)
+      expect(totais.valorAReceber.toNumber()).toBe(1090);
+    });
+
+    it('sem nenhum ajuste, comportamento identico ao anterior (nenhuma regressao)', () => {
+      const totais = calcularTotaisNegociacao(
+        [{ recebivel: { valorNominal: 1000, valorAberto: 1000, valorLiquido: 970 } }],
+        [],
+        [],
+        0,
+      );
+
+      expect(totais.valorAReceber.toNumber()).toBe(1000);
     });
   });
 });

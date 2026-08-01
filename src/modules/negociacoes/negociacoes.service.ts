@@ -10,12 +10,14 @@ import { CreateNegociacaoDto } from './dto/create-negociacao.dto';
 import { UpdateNegociacaoDto } from './dto/update-negociacao.dto';
 import { AdicionarItemRecebivelDto } from './dto/adicionar-item-recebivel.dto';
 import { AdicionarItemEmprestimoDto } from './dto/adicionar-item-emprestimo.dto';
+import { AdicionarItemAjusteDto } from './dto/adicionar-item-ajuste.dto';
 import { FindAllNegociacoesQueryDto } from './dto/find-all-negociacoes-query.dto';
 import { calcularTotaisNegociacao } from './negociacao.rules';
 
 const INCLUDE_ITENS = {
   itensRecebivel: { include: { recebivel: true } },
   itensEmprestimo: { include: { emprestimo: { include: { parcelas: true } } } },
+  itensAjuste: true,
 } satisfies Prisma.NegociacaoInclude;
 
 @Injectable()
@@ -200,6 +202,44 @@ export class NegociacoesService {
     });
   }
 
+  /**
+   * Negociacao.adicionarAjuste(item): lancamento manual de ACRESCIMO/DESCONTO no saldo,
+   * independente de valorTarifas. Permitido em qualquer status nao-terminal (EM_ANALISE ou
+   * APROVADA) -- ao contrario de adicionarRecebivel/adicionarEmprestimo, que exigem
+   * EM_ANALISE, um ajuste (ex.: multa por atraso) pode surgir depois da negociacao aprovada.
+   */
+  async adicionarAjuste(negociacaoId: string, dto: AdicionarItemAjusteDto, usuarioId: string) {
+    const negociacao = await this.findOne(negociacaoId);
+    this.garantirNaoTerminal(negociacao.status);
+
+    await this.prisma.itemNegociacaoAjuste.create({
+      data: {
+        negociacaoId,
+        usuarioId,
+        tipo: dto.tipo,
+        descricao: dto.descricao,
+        valor: dto.valor,
+      },
+    });
+
+    return this.recalcularTotais(this.prisma, negociacaoId);
+  }
+
+  /** Negociacao.removerAjuste(itemId): desfaz um lancamento feito por engano. */
+  async removerAjuste(negociacaoId: string, itemId: string) {
+    const negociacao = await this.findOne(negociacaoId);
+    this.garantirNaoTerminal(negociacao.status);
+
+    const item = await this.prisma.itemNegociacaoAjuste.findUnique({ where: { id: itemId } });
+    if (!item || item.negociacaoId !== negociacaoId) {
+      throw new NotFoundException('Ajuste nao encontrado nesta negociacao');
+    }
+
+    await this.prisma.itemNegociacaoAjuste.delete({ where: { id: itemId } });
+
+    return this.recalcularTotais(this.prisma, negociacaoId);
+  }
+
   async aprovar(id: string) {
     const negociacao = await this.findOne(id);
     if (negociacao.status !== StatusNegociacao.EM_ANALISE) {
@@ -292,6 +332,7 @@ export class NegociacoesService {
     const totais = calcularTotaisNegociacao(
       negociacao.itensRecebivel,
       negociacao.itensEmprestimo,
+      negociacao.itensAjuste,
       negociacao.valorTarifas,
     );
 

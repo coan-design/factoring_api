@@ -86,6 +86,12 @@ enum StatusNegociacao {
   CANCELADA
 }
 
+/** Lancamento manual a favor (ACRESCIMO) ou contra (DESCONTO) o saldo da negociacao. */
+enum TipoAjusteNegociacao {
+  ACRESCIMO
+  DESCONTO
+}
+
 enum FormaPagamento {
   PIX
   TED
@@ -108,6 +114,7 @@ model Usuario {
   updatedAt  DateTime      @updatedAt
 
   negociacoes Negociacao[] @relation("UsuarioCriaNegociacao")
+  ajustesLancados ItemNegociacaoAjuste[]
 
   @@index([perfil])
 }
@@ -273,6 +280,7 @@ model Negociacao {
 
   itensRecebivel     ItemNegociacaoRecebivel[]
   itensEmprestimo    ItemNegociacaoEmprestimo[]
+  itensAjuste        ItemNegociacaoAjuste[]
 
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
@@ -324,4 +332,29 @@ model ItemNegociacaoEmprestimo {
   @@unique([negociacaoId, emprestimoId])
   @@index([negociacaoId])
   @@index([emprestimoId])
+}
+
+/**
+ * Lancamento manual de ajuste na negociacao, a favor (ACRESCIMO) ou contra (DESCONTO) o
+ * saldo a receber -- ex.: multa por atraso, correcao monetaria, custo extra repassado ao
+ * cliente. `valor` e sempre positivo; o sinal (soma ou subtrai de valorAReceber) vem de
+ * `tipo`, nunca do numero em si, para evitar operador digitando valor negativo. Guarda
+ * `usuarioId` de quem lancou -- rastreabilidade de quem decidiu aplicar o ajuste. Mantido
+ * separado de `valorTarifas` (campo unico, sem itemizacao, que continua existindo).
+ */
+model ItemNegociacaoAjuste {
+  id              String               @id @default(uuid())
+  tipo            TipoAjusteNegociacao
+  descricao       String
+  valor           Decimal              @db.Decimal(15, 2)
+
+  negociacaoId    String
+  negociacao      Negociacao           @relation(fields: [negociacaoId], references: [id], onDelete: Cascade)
+
+  usuarioId       String
+  usuario         Usuario              @relation(fields: [usuarioId], references: [id])
+
+  createdAt       DateTime             @default(now())
+
+  @@index([negociacaoId])
 }

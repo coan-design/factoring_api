@@ -80,7 +80,14 @@ valor é calculado no momento da inclusão.
 - `Negociacao.calcularValorPago()`: soma(`Recebivel.valorNominal - Recebivel.valorAberto`) +
   soma(`ParcelaEmprestimo.valorPago` de todas as parcelas dos empréstimos vinculados) — o que já
   entrou de fato, **incluindo pagamentos anteriores à negociação**
-- `Negociacao.calcularValorAReceber()`: `valorTotalReceber - valorPago - valorTarifas`
+- `Negociacao.calcularValorAReceber()`: `valorTotalReceber - valorPago - valorTarifas -
+  soma(ItemNegociacaoAjuste DESCONTO) + soma(ItemNegociacaoAjuste ACRESCIMO)`. `ItemNegociacaoAjuste`
+  é um lançamento manual **itemizado** (`descricao` + `valor` sempre positivo + `usuarioId` de quem
+  lançou), independente de `valorTarifas` (que continua existindo, campo único sem itemização) —
+  usado para multa por atraso, correção monetária, custo extra repassado ao cliente, etc.
+  Permitido em qualquer status não-terminal (`EM_ANALISE` ou `APROVADA`), diferente de
+  `adicionarRecebivel`/`adicionarEmprestimo` (que exigem `EM_ANALISE`), já que um ajuste pode
+  surgir depois da negociação já aprovada.
 - `Emprestimo.gerarParcelas()`: parcelas fixas mensais; `SIMPLES` distribui juros lineares sobre o
   principal, `COMPOSTO` usa a fórmula de tabela Price (juros compostos sobre o saldo devedor)
 
@@ -94,7 +101,8 @@ cada módulo, e usadas pelos respectivos services — não ficam soltas em contr
 `NegociacoesService` os recalcula (via `calcularTotaisNegociacao()`, em `negociacao.rules.ts`) a
 cada mutação relevante:
 
-- inclusão de item (`adicionarRecebivel`/`adicionarEmprestimo`) ou alteração de `valorTarifas`;
+- inclusão/remoção de item (`adicionarRecebivel`/`adicionarEmprestimo`/`adicionarAjuste`/
+  `removerAjuste`) ou alteração de `valorTarifas`;
 - pagamento de um recebível vinculado — `RecebiveisService.registrarPagamento()` chama
   `NegociacoesService.recalcularPorRecebivel()` depois de atualizar o recebível;
 - pagamento de uma parcela de empréstimo vinculado — `ParcelasEmprestimoService.registrarPagamento()`

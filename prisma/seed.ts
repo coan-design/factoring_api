@@ -194,7 +194,7 @@ async function criarEmprestimoComParcelas(params: {
 
 /** Recalcula e persiste os 4 totais de uma negociacao a partir dos itens ja criados. */
 async function recalcularTotais(negociacaoId: string, valorTarifas: Prisma.Decimal.Value) {
-  const [itensRecebivel, itensEmprestimo] = await Promise.all([
+  const [itensRecebivel, itensEmprestimo, itensAjuste] = await Promise.all([
     prisma.itemNegociacaoRecebivel.findMany({
       where: { negociacaoId },
       include: { recebivel: true },
@@ -203,9 +203,10 @@ async function recalcularTotais(negociacaoId: string, valorTarifas: Prisma.Decim
       where: { negociacaoId },
       include: { emprestimo: { include: { parcelas: true } } },
     }),
+    prisma.itemNegociacaoAjuste.findMany({ where: { negociacaoId } }),
   ]);
 
-  const totais = calcularTotaisNegociacao(itensRecebivel, itensEmprestimo, valorTarifas);
+  const totais = calcularTotaisNegociacao(itensRecebivel, itensEmprestimo, itensAjuste, valorTarifas);
 
   return prisma.negociacao.update({ where: { id: negociacaoId }, data: totais });
 }

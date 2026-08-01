@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, TipoAjusteNegociacao } from '@prisma/client';
 
 interface ItemRecebivelParaCalculo {
   recebivel: {
@@ -13,6 +13,11 @@ interface ItemEmprestimoParaCalculo {
     valorEmprestado: Prisma.Decimal.Value;
     parcelas: { valor: Prisma.Decimal.Value; valorPago: Prisma.Decimal.Value }[];
   };
+}
+
+interface ItemAjusteParaCalculo {
+  tipo: TipoAjusteNegociacao;
+  valor: Prisma.Decimal.Value;
 }
 
 export interface TotaisNegociacao {
@@ -35,11 +40,16 @@ export interface TotaisNegociacao {
  * - calcularValorPago(): soma(Recebivel.valorNominal - Recebivel.valorAberto)
  *   + soma(ParcelaEmprestimo.valorPago) -> o que ja entrou de fato, incluindo pagamentos
  *   anteriores a inclusao na negociacao.
- * - calcularValorAReceber(): valorTotalReceber - valorPago - valorTarifas.
+ * - calcularValorAReceber(): valorTotalReceber - valorPago - valorTarifas
+ *   - soma(ItemNegociacaoAjuste DESCONTO) + soma(ItemNegociacaoAjuste ACRESCIMO).
+ *   Ajuste e mecanismo aditivo, independente de valorTarifas (que continua existindo,
+ *   sem itemizacao): DESCONTO reduz o saldo do mesmo jeito que valorTarifas, ACRESCIMO
+ *   aumenta -- multa por atraso, correcao monetaria, custo extra repassado ao cliente.
  */
 export function calcularTotaisNegociacao(
   itensRecebivel: ItemRecebivelParaCalculo[],
   itensEmprestimo: ItemEmprestimoParaCalculo[],
+  itensAjuste: ItemAjusteParaCalculo[],
   valorTarifas: Prisma.Decimal.Value,
 ): TotaisNegociacao {
   const zero = new Prisma.Decimal(0);
@@ -83,7 +93,18 @@ export function calcularTotaisNegociacao(
   }, zero);
   const valorPago = valorPagoRecebiveis.plus(valorPagoEmprestimos);
 
-  const valorAReceber = valorTotalReceber.minus(valorPago).minus(new Prisma.Decimal(valorTarifas));
+  const valorAcrescimos = itensAjuste
+    .filter((item) => item.tipo === TipoAjusteNegociacao.ACRESCIMO)
+    .reduce((acumulado, item) => acumulado.plus(item.valor), zero);
+  const valorDescontosAdicionais = itensAjuste
+    .filter((item) => item.tipo === TipoAjusteNegociacao.DESCONTO)
+    .reduce((acumulado, item) => acumulado.plus(item.valor), zero);
+
+  const valorAReceber = valorTotalReceber
+    .minus(valorPago)
+    .minus(new Prisma.Decimal(valorTarifas))
+    .minus(valorDescontosAdicionais)
+    .plus(valorAcrescimos);
 
   return { valorBruto, valorTotalReceber, valorPago, valorAReceber };
 }

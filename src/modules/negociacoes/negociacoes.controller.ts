@@ -20,6 +20,7 @@ import { CreateNegociacaoDto } from './dto/create-negociacao.dto';
 import { UpdateNegociacaoDto } from './dto/update-negociacao.dto';
 import { AdicionarItemRecebivelDto } from './dto/adicionar-item-recebivel.dto';
 import { AdicionarItemEmprestimoDto } from './dto/adicionar-item-emprestimo.dto';
+import { AdicionarItemAjusteDto } from './dto/adicionar-item-ajuste.dto';
 import { FindAllNegociacoesQueryDto } from './dto/find-all-negociacoes-query.dto';
 
 @ApiTags('negociacoes')
@@ -72,6 +73,22 @@ export class NegociacoesController {
   @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
   adicionarEmprestimo(@Param('id') id: string, @Body() dto: AdicionarItemEmprestimoDto) {
     return this.negociacoesService.adicionarEmprestimo(id, dto);
+  }
+
+  @Post(':id/itens-ajuste')
+  @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
+  adicionarAjuste(
+    @Param('id') id: string,
+    @Body() dto: AdicionarItemAjusteDto,
+    @CurrentUser() usuario: AuthenticatedUser,
+  ) {
+    return this.negociacoesService.adicionarAjuste(id, dto, usuario.id);
+  }
+
+  @Delete(':id/itens-ajuste/:itemId')
+  @Roles(PerfilUsuario.ADMIN, PerfilUsuario.OPERADOR)
+  removerAjuste(@Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.negociacoesService.removerAjuste(id, itemId);
   }
 
   @Patch(':id/aprovar')

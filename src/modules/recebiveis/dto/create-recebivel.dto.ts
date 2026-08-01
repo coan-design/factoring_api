@@ -5,7 +5,6 @@ import {
   IsBoolean,
   IsDate,
   IsEnum,
-  IsInt,
   IsNumber,
   IsPositive,
   IsString,
@@ -38,12 +37,8 @@ export class CreateRecebivelDto {
   @IsDate()
   dataVencimento: Date;
 
-  // --- Deságio: propriedade do recebível desde o cadastro ---
-  @ApiProperty({ description: 'Prazo em dias considerado para o calculo do desagio' })
-  @IsInt()
-  @Min(0)
-  quantidadeDias: number;
-
+  // --- Deságio: propriedade do recebível desde o cadastro. quantidadeDias NAO e input --
+  // calculado automaticamente a partir de dataBomPara/dataVencimento - dataEmissao. ---
   @ApiProperty({ enum: TipoDesagio, default: TipoDesagio.SIMPLES })
   @IsEnum(TipoDesagio)
   tipoDesagio: TipoDesagio;

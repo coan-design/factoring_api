@@ -11,6 +11,7 @@ import { FindAllRecebiveisQueryDto } from './dto/find-all-recebiveis-query.dto';
 import { LadoDocumentoRecebivel } from './dto/upload-documento-recebivel.dto';
 import {
   calcularDesagioPorTipo,
+  calcularQuantidadeDias,
   calcularValorAbertoAposPagamento,
   estaQuitado,
   estaVencido,
@@ -30,16 +31,23 @@ export class RecebiveisService {
       throw new NotFoundException('Cliente nao encontrado');
     }
 
+    const quantidadeDias = calcularQuantidadeDias(
+      dto.tipo,
+      dto.dataEmissao,
+      dto.dataBomPara,
+      dto.dataVencimento,
+    );
     const { valorDesagio, valorLiquido } = calcularDesagioPorTipo(
       dto.tipoDesagio,
       dto.valorNominal,
       dto.taxaDesagio,
-      dto.quantidadeDias,
+      quantidadeDias,
     );
 
     return this.prisma.recebivel.create({
       data: {
         ...dto,
+        quantidadeDias,
         valorAberto: dto.valorNominal,
         status: StatusRecebivel.PENDENTE,
         valorDesagio,
@@ -90,20 +98,29 @@ export class RecebiveisService {
     const alteraDesagio =
       dto.valorNominal !== undefined ||
       dto.taxaDesagio !== undefined ||
-      dto.quantidadeDias !== undefined ||
-      dto.tipoDesagio !== undefined;
+      dto.tipoDesagio !== undefined ||
+      dto.dataEmissao !== undefined ||
+      dto.dataBomPara !== undefined ||
+      dto.dataVencimento !== undefined;
 
     const data: Prisma.RecebivelUpdateInput = { ...dto };
 
     if (alteraDesagio) {
       await this.garantirDesagioEditavel(id);
 
+      const quantidadeDias = calcularQuantidadeDias(
+        recebivel.tipo,
+        dto.dataEmissao ?? recebivel.dataEmissao,
+        dto.dataBomPara ?? recebivel.dataBomPara,
+        dto.dataVencimento ?? recebivel.dataVencimento,
+      );
       const { valorDesagio, valorLiquido } = calcularDesagioPorTipo(
         dto.tipoDesagio ?? recebivel.tipoDesagio,
         dto.valorNominal ?? recebivel.valorNominal,
         dto.taxaDesagio ?? recebivel.taxaDesagio,
-        dto.quantidadeDias ?? recebivel.quantidadeDias,
+        quantidadeDias,
       );
+      data.quantidadeDias = quantidadeDias;
       data.valorDesagio = valorDesagio;
       data.valorLiquido = valorLiquido;
     }
@@ -181,7 +198,8 @@ export class RecebiveisService {
   }
 
   /**
-   * Bloqueia alteracao de deságio (valorNominal/taxaDesagio/quantidadeDias/tipoDesagio)
+   * Bloqueia alteracao de deságio (valorNominal/taxaDesagio/tipoDesagio/dataEmissao/
+   * dataBomPara/dataVencimento -- as tres ultimas alimentam o quantidadeDias calculado)
    * enquanto o recebivel estiver vinculado a uma negociacao EM_ANALISE/APROVADA -- mudar
    * esses valores silenciosamente alteraria o valorBruto de uma negociacao em andamento.
    */

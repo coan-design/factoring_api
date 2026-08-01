@@ -1,4 +1,4 @@
-import { Prisma, Recebivel, StatusRecebivel, TipoDesagio } from '@prisma/client';
+import { Prisma, Recebivel, StatusRecebivel, TipoDesagio, TipoRecebivel } from '@prisma/client';
 
 type RecebivelVencimento = Pick<Recebivel, 'dataVencimento' | 'status'>;
 type RecebivelValorAberto = Pick<Recebivel, 'valorAberto'>;
@@ -6,6 +6,26 @@ type RecebivelValorAberto = Pick<Recebivel, 'valorAberto'>;
 export interface ResultadoDesagio {
   valorDesagio: Prisma.Decimal;
   valorLiquido: Prisma.Decimal;
+}
+
+const MS_POR_DIA = 24 * 60 * 60 * 1000;
+
+/**
+ * Recebivel.calcularQuantidadeDias(): prazo considerado no calculo do desagio, derivado da
+ * data relevante de cada tipo -- nunca digitado pelo operador. CHEQUE usa dataBomPara (a data
+ * que o cliente pediu pra depositar, o que importa pro desagio); DUPLICATA nao tem dataBomPara,
+ * entao usa dataVencimento mesmo. Contagem = data relevante - dataEmissao.
+ */
+export function calcularQuantidadeDias(
+  tipo: TipoRecebivel,
+  dataEmissao: Date,
+  dataBomPara: Date | null | undefined,
+  dataVencimento: Date,
+): number {
+  const dataRelevante = tipo === TipoRecebivel.CHEQUE ? dataBomPara : dataVencimento;
+  return Math.round(
+    (new Date(dataRelevante as Date).getTime() - new Date(dataEmissao).getTime()) / MS_POR_DIA,
+  );
 }
 
 /** Recebivel.calcularDesagioSimples(): valorNominal * taxaDesagio * quantidadeDias / 30. */

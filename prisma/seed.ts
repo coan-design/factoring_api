@@ -6,6 +6,7 @@ import {
   StatusCliente,
   TipoRecebivel,
   StatusRecebivel,
+  TipoDesagio,
   TipoJuros,
   StatusParcela,
   TipoNegociacao,
@@ -14,11 +15,8 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { calcularValorParcela } from '../src/modules/emprestimos/emprestimo.rules';
-import {
-  calcularDesagio,
-  calcularValorLiquidoItemRecebivel,
-  calcularTotaisNegociacao,
-} from '../src/modules/negociacoes/negociacao.rules';
+import { calcularDesagioPorTipo } from '../src/modules/recebiveis/recebivel.rules';
+import { calcularTotaisNegociacao } from '../src/modules/negociacoes/negociacao.rules';
 
 const prisma = new PrismaClient();
 
@@ -97,7 +95,11 @@ async function criarClienteBase() {
   });
 }
 
-/** Cria um recebivel avulso (nao vinculado a nenhuma negociacao), ja vencido, para os badges. */
+/**
+ * Cria um recebivel avulso (nao vinculado a nenhuma negociacao), ja vencido, para os badges.
+ * Sem negociacao para herdar desagio de algum lugar, entao fica zerado (mesmo criterio usado
+ * pela migration de backfill para recebiveis que nunca foram vinculados).
+ */
 async function criarRecebivelVencidoAvulso(clienteId: string) {
   return prisma.recebivel.create({
     data: {
@@ -110,6 +112,11 @@ async function criarRecebivelVencidoAvulso(clienteId: string) {
       status: StatusRecebivel.VENCIDO,
       numeroNotaFiscal: 'NF-VENCIDA-001',
       aceite: true,
+      quantidadeDias: 0,
+      tipoDesagio: TipoDesagio.SIMPLES,
+      taxaDesagio: 0,
+      valorDesagio: 0,
+      valorLiquido: 3000,
     },
   });
 }
@@ -130,6 +137,11 @@ async function criarRecebivelPendenteAvulso(clienteId: string) {
       conta: '56789-0',
       numeroCheque: '000099',
       dataBomPara: new Date('2026-10-01'),
+      quantidadeDias: 0,
+      tipoDesagio: TipoDesagio.SIMPLES,
+      taxaDesagio: 0,
+      valorDesagio: 0,
+      valorLiquido: 1500,
     },
   });
 }
@@ -201,6 +213,15 @@ async function recalcularTotais(negociacaoId: string, valorTarifas: Prisma.Decim
 /** Negociacao EM_ANALISE, mista (recebivel + emprestimo), com um pagamento parcial de
  *  parcela feito ANTES do emprestimo entrar na negociacao (mostra valorPago refletindo isso). */
 async function criarNegociacaoEmAnalise(clienteId: string, usuarioId: string) {
+  const taxaDesagio = 0.025;
+  const quantidadeDias = 30;
+  const { valorDesagio, valorLiquido } = calcularDesagioPorTipo(
+    TipoDesagio.SIMPLES,
+    10000,
+    taxaDesagio,
+    quantidadeDias,
+  );
+
   const recebivel = await prisma.recebivel.create({
     data: {
       tipo: TipoRecebivel.DUPLICATA,
@@ -212,6 +233,11 @@ async function criarNegociacaoEmAnalise(clienteId: string, usuarioId: string) {
       status: StatusRecebivel.PENDENTE,
       numeroNotaFiscal: 'NF-000123',
       aceite: true,
+      quantidadeDias,
+      tipoDesagio: TipoDesagio.SIMPLES,
+      taxaDesagio,
+      valorDesagio,
+      valorLiquido,
     },
   });
 
@@ -248,21 +274,8 @@ async function criarNegociacaoEmAnalise(clienteId: string, usuarioId: string) {
     },
   });
 
-  const taxaDesagio = 0.025;
-  const quantidadeDias = 30;
-  const valorDesagio = calcularDesagio(recebivel.valorNominal, taxaDesagio, quantidadeDias);
-  const valorLiquido = calcularValorLiquidoItemRecebivel(recebivel.valorNominal, valorDesagio);
-
   await prisma.itemNegociacaoRecebivel.create({
-    data: {
-      negociacaoId: negociacao.id,
-      recebivelId: recebivel.id,
-      valorConsiderado: recebivel.valorNominal,
-      quantidadeDias,
-      taxaDesagio,
-      valorDesagio,
-      valorLiquido,
-    },
+    data: { negociacaoId: negociacao.id, recebivelId: recebivel.id },
   });
   await prisma.recebivel.update({
     where: { id: recebivel.id },
@@ -280,6 +293,15 @@ async function criarNegociacaoEmAnalise(clienteId: string, usuarioId: string) {
 
 /** Negociacao APROVADA, so com recebivel, sem pagamentos ainda. */
 async function criarNegociacaoAprovada(clienteId: string, usuarioId: string) {
+  const taxaDesagio = 0.03;
+  const quantidadeDias = 20;
+  const { valorDesagio, valorLiquido } = calcularDesagioPorTipo(
+    TipoDesagio.SIMPLES,
+    4000,
+    taxaDesagio,
+    quantidadeDias,
+  );
+
   const recebivel = await prisma.recebivel.create({
     data: {
       tipo: TipoRecebivel.CHEQUE,
@@ -294,6 +316,11 @@ async function criarNegociacaoAprovada(clienteId: string, usuarioId: string) {
       conta: '12345-6',
       numeroCheque: '000078',
       dataBomPara: new Date('2026-07-01'),
+      quantidadeDias,
+      tipoDesagio: TipoDesagio.SIMPLES,
+      taxaDesagio,
+      valorDesagio,
+      valorLiquido,
     },
   });
 
@@ -315,21 +342,8 @@ async function criarNegociacaoAprovada(clienteId: string, usuarioId: string) {
     },
   });
 
-  const taxaDesagio = 0.03;
-  const quantidadeDias = 20;
-  const valorDesagio = calcularDesagio(recebivel.valorNominal, taxaDesagio, quantidadeDias);
-  const valorLiquido = calcularValorLiquidoItemRecebivel(recebivel.valorNominal, valorDesagio);
-
   await prisma.itemNegociacaoRecebivel.create({
-    data: {
-      negociacaoId: negociacao.id,
-      recebivelId: recebivel.id,
-      valorConsiderado: recebivel.valorNominal,
-      quantidadeDias,
-      taxaDesagio,
-      valorDesagio,
-      valorLiquido,
-    },
+    data: { negociacaoId: negociacao.id, recebivelId: recebivel.id },
   });
   await prisma.recebivel.update({
     where: { id: recebivel.id },
@@ -343,6 +357,15 @@ async function criarNegociacaoAprovada(clienteId: string, usuarioId: string) {
 
 /** Negociacao FINALIZADA: recebivel totalmente quitado, sem tarifas, valorAReceber == 0. */
 async function criarNegociacaoFinalizada(clienteId: string, usuarioId: string) {
+  const taxaDesagio = 0.02;
+  const quantidadeDias = 15;
+  const { valorDesagio, valorLiquido } = calcularDesagioPorTipo(
+    TipoDesagio.SIMPLES,
+    2000,
+    taxaDesagio,
+    quantidadeDias,
+  );
+
   const recebivel = await prisma.recebivel.create({
     data: {
       tipo: TipoRecebivel.DUPLICATA,
@@ -354,6 +377,11 @@ async function criarNegociacaoFinalizada(clienteId: string, usuarioId: string) {
       status: StatusRecebivel.QUITADO,
       numeroNotaFiscal: 'NF-000200',
       aceite: true,
+      quantidadeDias,
+      tipoDesagio: TipoDesagio.SIMPLES,
+      taxaDesagio,
+      valorDesagio,
+      valorLiquido,
     },
   });
 
@@ -375,21 +403,8 @@ async function criarNegociacaoFinalizada(clienteId: string, usuarioId: string) {
     },
   });
 
-  const taxaDesagio = 0.02;
-  const quantidadeDias = 15;
-  const valorDesagio = calcularDesagio(2000, taxaDesagio, quantidadeDias);
-  const valorLiquido = calcularValorLiquidoItemRecebivel(2000, valorDesagio);
-
   await prisma.itemNegociacaoRecebivel.create({
-    data: {
-      negociacaoId: negociacao.id,
-      recebivelId: recebivel.id,
-      valorConsiderado: 2000,
-      quantidadeDias,
-      taxaDesagio,
-      valorDesagio,
-      valorLiquido,
-    },
+    data: { negociacaoId: negociacao.id, recebivelId: recebivel.id },
   });
 
   await recalcularTotais(negociacao.id, 0);

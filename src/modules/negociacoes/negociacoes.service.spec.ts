@@ -25,6 +25,7 @@ describe('NegociacoesService', () => {
     clienteId: 'c1',
     valorNominal: new Prisma.Decimal(1000),
     valorAberto: new Prisma.Decimal(1000),
+    valorLiquido: new Prisma.Decimal(970),
   };
 
   const emprestimoDoClienteComParcelas = {
@@ -86,7 +87,7 @@ describe('NegociacoesService', () => {
   });
 
   describe('adicionarRecebivel', () => {
-    const dto = { recebivelId: 'r1', quantidadeDias: 30, taxaDesagio: 0.03 };
+    const dto = { recebivelId: 'r1' };
 
     it('lanca NotFoundException se a negociacao nao existe', async () => {
       prisma.negociacao.findUnique.mockResolvedValue(null);
@@ -119,29 +120,23 @@ describe('NegociacoesService', () => {
       expect(prisma.itemNegociacaoRecebivel.create).not.toHaveBeenCalled();
     });
 
-    it('usa valorNominal (nao valorAberto) como valorConsiderado do item', async () => {
-      const recebivelComPagamentoParcial = {
-        ...recebivelDoCliente,
-        valorNominal: new Prisma.Decimal(1000),
-        valorAberto: new Prisma.Decimal(600), // ja recebeu 400 antes da negociacao
-      };
-
+    it('cria o item de juncao sem valores proprios, marca o recebivel como NEGOCIADO e recalcula os totais', async () => {
       prisma.negociacao.findUnique.mockResolvedValue(negociacaoEmAnalise);
-      prisma.recebivel.findUnique.mockResolvedValue(recebivelComPagamentoParcial);
+      prisma.recebivel.findUnique.mockResolvedValue(recebivelDoCliente);
       prisma.itemNegociacaoRecebivel.findFirst.mockResolvedValue(null);
       prisma.itemNegociacaoRecebivel.create.mockResolvedValue({});
       prisma.recebivel.update.mockResolvedValue({});
-      prisma.negociacao.findUniqueOrThrow.mockResolvedValue(negociacaoEmAnalise);
+      prisma.negociacao.findUniqueOrThrow.mockResolvedValue({
+        ...negociacaoEmAnalise,
+        itensRecebivel: [{ recebivel: recebivelDoCliente }],
+      });
       prisma.negociacao.update.mockImplementation(({ data }: any) => Promise.resolve(data));
 
       await service.adicionarRecebivel('n1', dto);
 
-      const itemCriado = prisma.itemNegociacaoRecebivel.create.mock.calls[0][0].data;
-      expect(itemCriado.valorConsiderado.toNumber()).toBe(1000);
-      // desagio = 1000 * 0.03 * 30 / 30 = 30 ; liquido = 970
-      expect(itemCriado.valorDesagio.toNumber()).toBeCloseTo(30, 2);
-      expect(itemCriado.valorLiquido.toNumber()).toBeCloseTo(970, 2);
-
+      expect(prisma.itemNegociacaoRecebivel.create).toHaveBeenCalledWith({
+        data: { negociacaoId: 'n1', recebivelId: 'r1' },
+      });
       expect(prisma.recebivel.update).toHaveBeenCalledWith({
         where: { id: 'r1' },
         data: { status: StatusRecebivel.NEGOCIADO },

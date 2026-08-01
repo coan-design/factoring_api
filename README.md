@@ -34,28 +34,46 @@ recebível pode aparecer em itens de negociações **canceladas**. A validação
 `NegociacoesService`, verificando se existe um item vinculado a uma negociação cujo status não é
 `CANCELADA` (ou seja, `EM_ANALISE`, `APROVADA` ou `FINALIZADA` "prendem" o título).
 
-### `ItemNegociacaoEmprestimo`: o empréstimo entra inteiro
+### `Recebivel` e `Emprestimo`: cada um dono do próprio cálculo financeiro
 
-`ItemNegociacaoEmprestimo` é uma **tabela de junção pura** (`id`, `negociacaoId`, `emprestimoId`,
-`createdAt`), sem valores próprios. Ao contrário de `ItemNegociacaoRecebivel` (que "congela" um
-`valorConsiderado`/`taxaDesagio` no momento da inclusão), o empréstimo entra **inteiro** na
-negociação: todas as suas `ParcelaEmprestimo` — pagas ou não, inclusive pagamentos anteriores à
-negociação — continuam vinculadas ao `Emprestimo` original, e os totais da negociação leem esses
-valores diretamente. Isso evita duplicar/recalcular juros que já estão embutidos no empréstimo.
-`adicionarEmprestimo()` exige que as parcelas já tenham sido geradas (`gerarParcelas()`), senão o
-`valorTotalReceber` ficaria incompleto.
+`ItemNegociacaoRecebivel` e `ItemNegociacaoEmprestimo` são **tabelas de junção puras** (`id`,
+`negociacaoId`, `recebivelId`/`emprestimoId`, `createdAt`), sem valores próprios. `Negociacao` só
+agrupa e soma o que já vem pronto de cada título:
+
+- `Emprestimo` entra **inteiro**: todas as suas `ParcelaEmprestimo` — pagas ou não, inclusive
+  pagamentos anteriores à negociação — continuam vinculadas ao `Emprestimo` original, e os totais
+  da negociação leem esses valores diretamente. `adicionarEmprestimo()` exige que as parcelas já
+  tenham sido geradas (`gerarParcelas()`), senão o `valorTotalReceber` ficaria incompleto.
+- `Recebivel` segue o mesmo padrão desde o cadastro: `quantidadeDias`, `tipoDesagio`,
+  `taxaDesagio`, `valorDesagio` e `valorLiquido` são propriedade do próprio `Recebivel` (calculados
+  em `RecebiveisService.create()`/`update()`, não mais na inclusão na negociação). Editar
+  `valorNominal`/`taxaDesagio`/`quantidadeDias`/`tipoDesagio` de um recebível já vinculado a uma
+  negociação `EM_ANALISE`/`APROVADA` é bloqueado (409) para não mudar silenciosamente o
+  `valorBruto` de uma negociação em andamento — só é permitido depois que a negociação sai desse
+  estado (aprovado→finalizado, ou cancelado).
+
+`adicionarRecebivel()`/`adicionarEmprestimo()` só validam posse/reuso e criam o vínculo; nenhum
+valor é calculado no momento da inclusão.
 
 ### Cálculos financeiros
 
-- `ItemNegociacaoRecebivel.calcularDesagio()`: `valorConsiderado * taxaDesagio * quantidadeDias / 30`
-- `ItemNegociacaoRecebivel.calcularValorLiquido()`: `valorConsiderado - valorDesagio`
-  (`valorConsiderado` = `Recebivel.valorNominal` no momento da inclusão)
+- `Recebivel.calcularDesagioSimples()`: `valorNominal * taxaDesagio * quantidadeDias / 30`
+- `Recebivel.calcularDesagioComposto()`: `valorLiquido = valorNominal / (1 + taxaDesagio) ^
+  (quantidadeDias / 30)`, `valorDesagio = valorNominal - valorLiquido`. Implementado com
+  `Prisma.Decimal.pow()` (decimal.js por baixo do capô), que resolve expoente fracionário com
+  precisão decimal completa — validado manualmente contra o cálculo matemático exato (ex.:
+  `1000 / 1.03^0.5 = 985.32927816429315226...`, batendo casa a casa). Por isso o cálculo fica
+  inteiramente em `Prisma.Decimal`, sem converter para `number`/`Math.pow` (que introduziria erro
+  de ponto flutuante em valores financeiros).
+- `Recebivel.calcularDesagioPorTipo()`: dispatcher usado por `RecebiveisService` conforme
+  `Recebivel.tipoDesagio` (`SIMPLES` | `COMPOSTO`)
+- `Recebivel.calcularValorLiquido()`: `valorNominal - valorDesagio`
 - `Emprestimo.calcularValorTotal()`: soma de `valor` de todas as `ParcelaEmprestimo` geradas
   (principal + juros)
 - `Emprestimo.calcularSaldoDevedor()`: soma de `(valor - valorPago)` das parcelas **ainda não
   quitadas** — quanto falta receber desse empréstimo hoje
 - `Negociacao.calcularValorBruto()`: soma(`Emprestimo.valorEmprestado` dos empréstimos vinculados)
-  + soma(`ItemNegociacaoRecebivel.valorLiquido` dos itens) — quanto a factoring desembolsou
+  + soma(`Recebivel.valorLiquido` dos recebíveis vinculados) — quanto a factoring desembolsou
 - `Negociacao.calcularValorTotalReceber()`: soma(`Emprestimo.calcularValorTotal()`) +
   soma(`Recebivel.valorNominal` dos recebíveis vinculados) — quanto se espera receber no total,
   já com o lucro da operação embutido

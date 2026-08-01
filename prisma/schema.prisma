@@ -61,6 +61,12 @@ enum TipoJuros {
   COMPOSTO
 }
 
+/** Conceito de dominio distinto de TipoJuros (desagio de recebivel, nao juros de emprestimo). */
+enum TipoDesagio {
+  SIMPLES
+  COMPOSTO
+}
+
 enum StatusParcela {
   PENDENTE
   PAGA
@@ -157,6 +163,14 @@ model Recebivel {
   dataEmissao     DateTime        @db.Date
   dataVencimento  DateTime        @db.Date
   status          StatusRecebivel @default(PENDENTE)
+
+  // --- deságio: propriedade do recebível desde o cadastro (antes vivia em
+  // ItemNegociacaoRecebivel, configurado só na hora de vincular a uma negociação) ---
+  quantidadeDias  Int
+  tipoDesagio     TipoDesagio     @default(SIMPLES)
+  taxaDesagio     Decimal         @db.Decimal(9, 6)
+  valorDesagio    Decimal         @db.Decimal(15, 2)
+  valorLiquido    Decimal         @db.Decimal(15, 2)
 
   // --- campos específicos de Cheque (nulos quando tipo = DUPLICATA) ---
   banco           String?
@@ -267,20 +281,25 @@ model Negociacao {
   @@index([status])
 }
 
+/**
+ * Tabela de juncao pura, no mesmo padrao de ItemNegociacaoEmprestimo: o recebivel entra
+ * inteiro na negociacao, sem valores proprios aqui. Deságio (quantidadeDias/tipoDesagio/
+ * taxaDesagio/valorDesagio/valorLiquido) e propriedade do Recebivel desde o cadastro --
+ * Negociacao.calcularValorBruto/ValorTotalReceber/ValorPago le direto de Recebivel para
+ * os itens referenciados por esta tabela.
+ */
 model ItemNegociacaoRecebivel {
-  id                String     @id @default(uuid())
-  valorConsiderado  Decimal    @db.Decimal(15, 2)
-  quantidadeDias    Int
-  taxaDesagio       Decimal    @db.Decimal(9, 6)
-  valorDesagio      Decimal    @db.Decimal(15, 2)
-  valorLiquido      Decimal    @db.Decimal(15, 2)
+  id              String     @id @default(uuid())
 
-  negociacaoId      String
-  negociacao        Negociacao @relation(fields: [negociacaoId], references: [id], onDelete: Cascade)
+  negociacaoId    String
+  negociacao      Negociacao @relation(fields: [negociacaoId], references: [id], onDelete: Cascade)
 
-  recebivelId       String
-  recebivel         Recebivel  @relation(fields: [recebivelId], references: [id])
+  recebivelId     String
+  recebivel       Recebivel  @relation(fields: [recebivelId], references: [id])
 
+  createdAt       DateTime   @default(now())
+
+  @@unique([negociacaoId, recebivelId])
   @@index([negociacaoId])
   @@index([recebivelId])
 }

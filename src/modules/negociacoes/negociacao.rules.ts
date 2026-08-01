@@ -1,30 +1,10 @@
 import { Prisma } from '@prisma/client';
 
-/** ItemNegociacaoRecebivel.calcularDesagio(): valorConsiderado * taxaDesagio * quantidadeDias / 30. */
-export function calcularDesagio(
-  valorConsiderado: Prisma.Decimal.Value,
-  taxaDesagio: Prisma.Decimal.Value,
-  quantidadeDias: number,
-): Prisma.Decimal {
-  return new Prisma.Decimal(valorConsiderado)
-    .times(new Prisma.Decimal(taxaDesagio))
-    .times(quantidadeDias)
-    .dividedBy(30);
-}
-
-/** ItemNegociacaoRecebivel.calcularValorLiquido(): valorConsiderado - valorDesagio. */
-export function calcularValorLiquidoItemRecebivel(
-  valorConsiderado: Prisma.Decimal.Value,
-  valorDesagio: Prisma.Decimal.Value,
-): Prisma.Decimal {
-  return new Prisma.Decimal(valorConsiderado).minus(new Prisma.Decimal(valorDesagio));
-}
-
 interface ItemRecebivelParaCalculo {
-  valorLiquido: Prisma.Decimal.Value;
   recebivel: {
     valorNominal: Prisma.Decimal.Value;
     valorAberto: Prisma.Decimal.Value;
+    valorLiquido: Prisma.Decimal.Value;
   };
 }
 
@@ -48,7 +28,7 @@ export interface TotaisNegociacao {
  * totais leem diretamente de Emprestimo.valorEmprestado e das ParcelaEmprestimo geradas
  * (pagas ou nao), independente de quando essas parcelas foram pagas.
  *
- * - calcularValorBruto(): soma(Emprestimo.valorEmprestado) + soma(ItemNegociacaoRecebivel.valorLiquido)
+ * - calcularValorBruto(): soma(Emprestimo.valorEmprestado) + soma(Recebivel.valorLiquido)
  *   -> quanto a factoring desembolsou na negociacao.
  * - calcularValorTotalReceber(): soma(Emprestimo.calcularValorTotal(), i.e. soma das parcelas)
  *   + soma(Recebivel.valorNominal) -> quanto se espera receber no total, ja com o lucro embutido.
@@ -65,7 +45,7 @@ export function calcularTotaisNegociacao(
   const zero = new Prisma.Decimal(0);
 
   const valorBrutoRecebiveis = itensRecebivel.reduce(
-    (acumulado, item) => acumulado.plus(item.valorLiquido),
+    (acumulado, item) => acumulado.plus(item.recebivel.valorLiquido),
     zero,
   );
   const valorBrutoEmprestimos = itensEmprestimo.reduce(

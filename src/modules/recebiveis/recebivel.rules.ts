@@ -1,7 +1,72 @@
-import { Prisma, Recebivel, StatusRecebivel } from '@prisma/client';
+import { Prisma, Recebivel, StatusRecebivel, TipoDesagio } from '@prisma/client';
 
 type RecebivelVencimento = Pick<Recebivel, 'dataVencimento' | 'status'>;
 type RecebivelValorAberto = Pick<Recebivel, 'valorAberto'>;
+
+export interface ResultadoDesagio {
+  valorDesagio: Prisma.Decimal;
+  valorLiquido: Prisma.Decimal;
+}
+
+/** Recebivel.calcularDesagioSimples(): valorNominal * taxaDesagio * quantidadeDias / 30. */
+export function calcularDesagioSimples(
+  valorNominal: Prisma.Decimal.Value,
+  taxaDesagio: Prisma.Decimal.Value,
+  quantidadeDias: number,
+): Prisma.Decimal {
+  return new Prisma.Decimal(valorNominal)
+    .times(new Prisma.Decimal(taxaDesagio))
+    .times(quantidadeDias)
+    .dividedBy(30);
+}
+
+/** Recebivel.calcularValorLiquido(): valorNominal - valorDesagio. */
+export function calcularValorLiquido(
+  valorNominal: Prisma.Decimal.Value,
+  valorDesagio: Prisma.Decimal.Value,
+): Prisma.Decimal {
+  return new Prisma.Decimal(valorNominal).minus(new Prisma.Decimal(valorDesagio));
+}
+
+/**
+ * Caso COMPOSTO: desagio exponencial sobre o periodo.
+ *   valorLiquido = valorNominal / (1 + taxaDesagio) ^ (quantidadeDias / 30)
+ *   valorDesagio = valorNominal - valorLiquido
+ *
+ * Usa Prisma.Decimal.pow (decimal.js por baixo), que resolve expoente fracionario com
+ * precisao decimal completa -- validado manualmente contra o calculo matematico exato
+ * (ex.: 1000 / 1.03^0.5 bate casa a casa). Por isso nao ha necessidade de converter para
+ * `number`/`Math.pow`, o que introduziria erro de ponto flutuante em valores financeiros.
+ */
+export function calcularDesagioComposto(
+  valorNominal: Prisma.Decimal.Value,
+  taxaDesagio: Prisma.Decimal.Value,
+  quantidadeDias: number,
+): ResultadoDesagio {
+  const nominal = new Prisma.Decimal(valorNominal);
+  const fatorPeriodo = new Prisma.Decimal(quantidadeDias).dividedBy(30);
+  const base = new Prisma.Decimal(1).plus(new Prisma.Decimal(taxaDesagio));
+
+  const valorLiquido = nominal.dividedBy(base.pow(fatorPeriodo));
+  const valorDesagio = nominal.minus(valorLiquido);
+
+  return { valorDesagio, valorLiquido };
+}
+
+/** Dispatcher usado pelo RecebiveisService ao criar/editar o Recebivel. */
+export function calcularDesagioPorTipo(
+  tipoDesagio: TipoDesagio,
+  valorNominal: Prisma.Decimal.Value,
+  taxaDesagio: Prisma.Decimal.Value,
+  quantidadeDias: number,
+): ResultadoDesagio {
+  if (tipoDesagio === TipoDesagio.COMPOSTO) {
+    return calcularDesagioComposto(valorNominal, taxaDesagio, quantidadeDias);
+  }
+
+  const valorDesagio = calcularDesagioSimples(valorNominal, taxaDesagio, quantidadeDias);
+  return { valorDesagio, valorLiquido: calcularValorLiquido(valorNominal, valorDesagio) };
+}
 
 /** Recebivel.estaVencido(): vencido e ainda nao quitado. */
 export function estaVencido(recebivel: RecebivelVencimento): boolean {

@@ -114,6 +114,10 @@ describe('Wizard de Negociacao (e2e)', () => {
         dataVencimento: '2026-08-01',
         numeroNotaFiscal: 'NF-WIZARD-A',
         aceite: true,
+        sacado: 'Sacado Wizard A Ltda',
+        quantidadeDias: 30,
+        tipoDesagio: 'SIMPLES',
+        taxaDesagio: 0.03,
       })
       .expect(201);
     recebivelAId = recebivelA.body.id;
@@ -129,6 +133,10 @@ describe('Wizard de Negociacao (e2e)', () => {
         dataVencimento: '2026-08-01',
         numeroNotaFiscal: 'NF-WIZARD-B',
         aceite: true,
+        sacado: 'Sacado Wizard B Ltda',
+        quantidadeDias: 15,
+        tipoDesagio: 'SIMPLES',
+        taxaDesagio: 0.02,
       })
       .expect(201);
     recebivelBId = recebivelB.body.id;
@@ -199,7 +207,7 @@ describe('Wizard de Negociacao (e2e)', () => {
     await http
       .post(`/negociacoes/${negociacaoId}/itens-recebivel`)
       .set(auth())
-      .send({ recebivelId: recebivelBId, quantidadeDias: 30, taxaDesagio: 0.03 })
+      .send({ recebivelId: recebivelBId })
       .expect(409);
 
     await http
@@ -213,7 +221,7 @@ describe('Wizard de Negociacao (e2e)', () => {
     const response = await http
       .post(`/negociacoes/${negociacaoId}/itens-recebivel`)
       .set(auth())
-      .send({ recebivelId: recebivelAId, quantidadeDias: 30, taxaDesagio: 0.03 })
+      .send({ recebivelId: recebivelAId })
       .expect(201);
 
     // desagio = 1000 * 0.03 * 30/30 = 30 ; liquido = 970
@@ -257,7 +265,7 @@ describe('Wizard de Negociacao (e2e)', () => {
     await http
       .post(`/negociacoes/${negociacaoConcorrenteId}/itens-recebivel`)
       .set(auth())
-      .send({ recebivelId: recebivelAId, quantidadeDias: 10, taxaDesagio: 0.01 })
+      .send({ recebivelId: recebivelAId })
       .expect(409);
 
     // limpeza: cancela a negociacao concorrente para nao interferir no restante do teste

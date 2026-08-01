@@ -1,14 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { TipoRecebivel } from '@prisma/client';
+import { TipoDesagio, TipoRecebivel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDate,
   IsEnum,
+  IsInt,
   IsNumber,
   IsPositive,
   IsString,
   IsUUID,
+  Min,
   ValidateIf,
 } from 'class-validator';
 
@@ -35,6 +37,21 @@ export class CreateRecebivelDto {
   @Type(() => Date)
   @IsDate()
   dataVencimento: Date;
+
+  // --- Deságio: propriedade do recebível desde o cadastro ---
+  @ApiProperty({ description: 'Prazo em dias considerado para o calculo do desagio' })
+  @IsInt()
+  @Min(0)
+  quantidadeDias: number;
+
+  @ApiProperty({ enum: TipoDesagio, default: TipoDesagio.SIMPLES })
+  @IsEnum(TipoDesagio)
+  tipoDesagio: TipoDesagio;
+
+  @ApiProperty({ description: 'Taxa de desagio, em fracao decimal (ex.: 0.03 = 3%)' })
+  @IsNumber({ maxDecimalPlaces: 6 })
+  @Min(0)
+  taxaDesagio: number;
 
   // --- Cheque ---
   @ApiPropertyOptional({ description: 'Obrigatorio quando tipo = CHEQUE' })

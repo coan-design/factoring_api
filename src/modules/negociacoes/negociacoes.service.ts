@@ -11,7 +11,7 @@ import { UpdateNegociacaoDto } from './dto/update-negociacao.dto';
 import { AdicionarItemRecebivelDto } from './dto/adicionar-item-recebivel.dto';
 import { AdicionarItemEmprestimoDto } from './dto/adicionar-item-emprestimo.dto';
 import { FindAllNegociacoesQueryDto } from './dto/find-all-negociacoes-query.dto';
-import { calcularDesagio, calcularTotaisNegociacao, calcularValorLiquidoItemRecebivel } from './negociacao.rules';
+import { calcularTotaisNegociacao } from './negociacao.rules';
 
 const INCLUDE_ITENS = {
   itensRecebivel: { include: { recebivel: true } },
@@ -105,8 +105,9 @@ export class NegociacoesService {
 
   /**
    * Negociacao.adicionarRecebivel(item): valida que o recebivel pertence ao mesmo cliente
-   * da negociacao e que ainda nao esta preso a outra negociacao ativa. valorConsiderado e
-   * o valorNominal do recebivel no momento da inclusao. Recalcula os totais da negociacao.
+   * da negociacao e que ainda nao esta preso a outra negociacao ativa. O recebivel entra
+   * inteiro -- valorDesagio/valorLiquido ja vem calculados do seu proprio cadastro (mesmo
+   * padrao de Emprestimo/ItemNegociacaoEmprestimo). Recalcula os totais da negociacao.
    */
   async adicionarRecebivel(negociacaoId: string, dto: AdicionarItemRecebivelDto) {
     return this.prisma.$transaction(async (tx) => {
@@ -136,20 +137,8 @@ export class NegociacoesService {
         throw new ConflictException('Este recebivel ja esta vinculado a outra negociacao ativa');
       }
 
-      const valorConsiderado = recebivel.valorNominal;
-      const valorDesagio = calcularDesagio(valorConsiderado, dto.taxaDesagio, dto.quantidadeDias);
-      const valorLiquido = calcularValorLiquidoItemRecebivel(valorConsiderado, valorDesagio);
-
       await tx.itemNegociacaoRecebivel.create({
-        data: {
-          negociacaoId,
-          recebivelId: dto.recebivelId,
-          valorConsiderado,
-          quantidadeDias: dto.quantidadeDias,
-          taxaDesagio: dto.taxaDesagio,
-          valorDesagio,
-          valorLiquido,
-        },
+        data: { negociacaoId, recebivelId: dto.recebivelId },
       });
 
       await tx.recebivel.update({

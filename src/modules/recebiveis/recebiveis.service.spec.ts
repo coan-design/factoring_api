@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { StatusRecebivel, TipoRecebivel } from '@prisma/client';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Prisma, StatusRecebivel, TipoDesagio, TipoRecebivel } from '@prisma/client';
 import { RecebiveisService } from './recebiveis.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
@@ -9,8 +9,15 @@ import { NegociacoesService } from '../negociacoes/negociacoes.service';
 describe('RecebiveisService', () => {
   let service: RecebiveisService;
   let prisma: {
-    recebivel: { findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    recebivel: {
+      findUnique: jest.Mock;
+      update: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
+      create: jest.Mock;
+    };
     cliente: { findUnique: jest.Mock };
+    itemNegociacaoRecebivel: { findFirst: jest.Mock };
     $transaction: jest.Mock;
   };
   let negociacoesService: { recalcularPorRecebivel: jest.Mock };
@@ -24,8 +31,15 @@ describe('RecebiveisService', () => {
 
   beforeEach(async () => {
     prisma = {
-      recebivel: { findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+      recebivel: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+        create: jest.fn(),
+      },
       cliente: { findUnique: jest.fn() },
+      itemNegociacaoRecebivel: { findFirst: jest.fn() },
       $transaction: jest.fn((operacoes: Promise<unknown>[]) => Promise.all(operacoes)),
     };
     negociacoesService = { recalcularPorRecebivel: jest.fn() };
@@ -67,6 +81,92 @@ describe('RecebiveisService', () => {
         }),
       );
       expect(resultado).toEqual({ data: [], total: 0, page: 1, pageSize: 20 });
+    });
+  });
+
+  describe('create', () => {
+    const dtoBase = {
+      tipo: TipoRecebivel.DUPLICATA,
+      clienteId: 'c1',
+      valorNominal: 1000,
+      dataEmissao: new Date('2026-01-01'),
+      dataVencimento: diasNoFuturo(30),
+      quantidadeDias: 30,
+      taxaDesagio: 0.03,
+    };
+
+    it('lanca NotFoundException se o cliente nao existe', async () => {
+      prisma.cliente.findUnique.mockResolvedValue(null);
+      await expect(
+        service.create({ ...dtoBase, tipoDesagio: TipoDesagio.SIMPLES } as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('calcula valorDesagio/valorLiquido (SIMPLES) e usa valorNominal como valorAberto inicial', async () => {
+      prisma.cliente.findUnique.mockResolvedValue({ id: 'c1' });
+      prisma.recebivel.create.mockImplementation(({ data }) => Promise.resolve(data));
+
+      const resultado = await service.create({ ...dtoBase, tipoDesagio: TipoDesagio.SIMPLES } as any);
+
+      expect(resultado.valorAberto).toBe(1000);
+      // 1000 * 0.03 * 30 / 30 = 30 ; liquido = 970
+      expect((resultado.valorDesagio as Prisma.Decimal).toNumber()).toBeCloseTo(30, 2);
+      expect((resultado.valorLiquido as Prisma.Decimal).toNumber()).toBeCloseTo(970, 2);
+    });
+
+    it('calcula valorDesagio/valorLiquido (COMPOSTO)', async () => {
+      prisma.cliente.findUnique.mockResolvedValue({ id: 'c1' });
+      prisma.recebivel.create.mockImplementation(({ data }) => Promise.resolve(data));
+
+      const resultado = await service.create({ ...dtoBase, tipoDesagio: TipoDesagio.COMPOSTO } as any);
+
+      // 1000 / 1.03^1
+      expect((resultado.valorLiquido as Prisma.Decimal).toNumber()).toBeCloseTo(970.873786, 6);
+    });
+  });
+
+  describe('update', () => {
+    const recebivelExistente = {
+      id: 'r1',
+      valorNominal: new Prisma.Decimal(1000),
+      taxaDesagio: new Prisma.Decimal(0.03),
+      quantidadeDias: 30,
+      tipoDesagio: TipoDesagio.SIMPLES,
+    };
+
+    it('nao consulta vinculo com negociacao se nenhum campo de desagio mudou', async () => {
+      prisma.recebivel.findUnique.mockResolvedValue(recebivelExistente);
+      prisma.recebivel.update.mockImplementation(({ data }) => Promise.resolve(data));
+
+      await service.update('r1', { banco: 'Novo Banco' } as any);
+
+      expect(prisma.itemNegociacaoRecebivel.findFirst).not.toHaveBeenCalled();
+      expect(prisma.recebivel.update).toHaveBeenCalledWith({
+        where: { id: 'r1' },
+        data: { banco: 'Novo Banco' },
+      });
+    });
+
+    it('recalcula valorDesagio/valorLiquido quando taxaDesagio muda', async () => {
+      prisma.recebivel.findUnique.mockResolvedValue(recebivelExistente);
+      prisma.itemNegociacaoRecebivel.findFirst.mockResolvedValue(null);
+      prisma.recebivel.update.mockImplementation(({ data }) => Promise.resolve(data));
+
+      const resultado = await service.update('r1', { taxaDesagio: 0.05 } as any);
+
+      // 1000 * 0.05 * 30 / 30 = 50 ; liquido = 950
+      expect((resultado.valorDesagio as Prisma.Decimal).toNumber()).toBeCloseTo(50, 2);
+      expect((resultado.valorLiquido as Prisma.Decimal).toNumber()).toBeCloseTo(950, 2);
+    });
+
+    it('bloqueia alteracao de desagio se o recebivel esta vinculado a negociacao EM_ANALISE/APROVADA', async () => {
+      prisma.recebivel.findUnique.mockResolvedValue(recebivelExistente);
+      prisma.itemNegociacaoRecebivel.findFirst.mockResolvedValue({ id: 'item-existente' });
+
+      await expect(service.update('r1', { taxaDesagio: 0.05 } as any)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.recebivel.update).not.toHaveBeenCalled();
     });
   });
 

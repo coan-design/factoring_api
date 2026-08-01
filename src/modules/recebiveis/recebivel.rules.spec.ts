@@ -1,8 +1,9 @@
-import { StatusRecebivel, TipoDesagio } from '@prisma/client';
+import { StatusRecebivel, TipoDesagio, TipoRecebivel } from '@prisma/client';
 import {
   calcularDesagioComposto,
   calcularDesagioPorTipo,
   calcularDesagioSimples,
+  calcularQuantidadeDias,
   calcularValorAbertoAposPagamento,
   calcularValorLiquido,
   estaQuitado,
@@ -43,6 +44,38 @@ describe('recebivel.rules', () => {
 
     it('retorna false quando valorAberto e maior que zero', () => {
       expect(estaQuitado({ valorAberto: 10.5 as any })).toBe(false);
+    });
+  });
+
+  describe('calcularQuantidadeDias', () => {
+    it('CHEQUE usa dataBomPara - dataEmissao', () => {
+      const dias = calcularQuantidadeDias(
+        TipoRecebivel.CHEQUE,
+        new Date('2026-07-01'),
+        new Date('2026-10-01'), // dataBomPara
+        new Date('2026-08-01'), // dataVencimento (ignorada para CHEQUE)
+      );
+      expect(dias).toBe(92);
+    });
+
+    it('DUPLICATA usa dataVencimento - dataEmissao (nao tem dataBomPara)', () => {
+      const dias = calcularQuantidadeDias(
+        TipoRecebivel.DUPLICATA,
+        new Date('2026-06-01'),
+        null,
+        new Date('2026-08-01'),
+      );
+      expect(dias).toBe(61);
+    });
+
+    it('data relevante igual a dataEmissao -> quantidadeDias = 0', () => {
+      const dias = calcularQuantidadeDias(
+        TipoRecebivel.DUPLICATA,
+        new Date('2026-06-01'),
+        null,
+        new Date('2026-06-01'),
+      );
+      expect(dias).toBe(0);
     });
   });
 

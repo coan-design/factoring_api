@@ -85,13 +85,13 @@ describe('RecebiveisService', () => {
   });
 
   describe('create', () => {
+    // dataEmissao -> dataVencimento = 30 dias exatos (DUPLICATA usa dataVencimento).
     const dtoBase = {
       tipo: TipoRecebivel.DUPLICATA,
       clienteId: 'c1',
       valorNominal: 1000,
       dataEmissao: new Date('2026-01-01'),
-      dataVencimento: diasNoFuturo(30),
-      quantidadeDias: 30,
+      dataVencimento: new Date('2026-01-31'),
       taxaDesagio: 0.03,
     };
 
@@ -102,16 +102,32 @@ describe('RecebiveisService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('calcula valorDesagio/valorLiquido (SIMPLES) e usa valorNominal como valorAberto inicial', async () => {
+    it('calcula quantidadeDias (DUPLICATA = dataVencimento - dataEmissao) e valorDesagio/valorLiquido (SIMPLES), usa valorNominal como valorAberto inicial', async () => {
       prisma.cliente.findUnique.mockResolvedValue({ id: 'c1' });
       prisma.recebivel.create.mockImplementation(({ data }) => Promise.resolve(data));
 
       const resultado = await service.create({ ...dtoBase, tipoDesagio: TipoDesagio.SIMPLES } as any);
 
+      expect(resultado.quantidadeDias).toBe(30);
       expect(resultado.valorAberto).toBe(1000);
       // 1000 * 0.03 * 30 / 30 = 30 ; liquido = 970
       expect((resultado.valorDesagio as Prisma.Decimal).toNumber()).toBeCloseTo(30, 2);
       expect((resultado.valorLiquido as Prisma.Decimal).toNumber()).toBeCloseTo(970, 2);
+    });
+
+    it('CHEQUE calcula quantidadeDias a partir de dataBomPara, ignorando dataVencimento', async () => {
+      prisma.cliente.findUnique.mockResolvedValue({ id: 'c1' });
+      prisma.recebivel.create.mockImplementation(({ data }) => Promise.resolve(data));
+
+      const resultado = await service.create({
+        ...dtoBase,
+        tipo: TipoRecebivel.CHEQUE,
+        dataVencimento: new Date('2026-12-01'), // nao deve ser usada no calculo
+        dataBomPara: new Date('2026-01-31'), // dataEmissao + 30 dias
+        tipoDesagio: TipoDesagio.SIMPLES,
+      } as any);
+
+      expect(resultado.quantidadeDias).toBe(30);
     });
 
     it('calcula valorDesagio/valorLiquido (COMPOSTO)', async () => {
@@ -126,10 +142,15 @@ describe('RecebiveisService', () => {
   });
 
   describe('update', () => {
+    // dataEmissao -> dataVencimento = 30 dias exatos (DUPLICATA usa dataVencimento).
     const recebivelExistente = {
       id: 'r1',
+      tipo: TipoRecebivel.DUPLICATA,
       valorNominal: new Prisma.Decimal(1000),
       taxaDesagio: new Prisma.Decimal(0.03),
+      dataEmissao: new Date('2026-01-01'),
+      dataBomPara: null,
+      dataVencimento: new Date('2026-01-31'),
       quantidadeDias: 30,
       tipoDesagio: TipoDesagio.SIMPLES,
     };
@@ -147,16 +168,31 @@ describe('RecebiveisService', () => {
       });
     });
 
-    it('recalcula valorDesagio/valorLiquido quando taxaDesagio muda', async () => {
+    it('recalcula valorDesagio/valorLiquido quando taxaDesagio muda (quantidadeDias mantem-se, datas nao mudaram)', async () => {
       prisma.recebivel.findUnique.mockResolvedValue(recebivelExistente);
       prisma.itemNegociacaoRecebivel.findFirst.mockResolvedValue(null);
       prisma.recebivel.update.mockImplementation(({ data }) => Promise.resolve(data));
 
       const resultado = await service.update('r1', { taxaDesagio: 0.05 } as any);
 
+      expect(resultado.quantidadeDias).toBe(30);
       // 1000 * 0.05 * 30 / 30 = 50 ; liquido = 950
       expect((resultado.valorDesagio as Prisma.Decimal).toNumber()).toBeCloseTo(50, 2);
       expect((resultado.valorLiquido as Prisma.Decimal).toNumber()).toBeCloseTo(950, 2);
+    });
+
+    it('recalcula quantidadeDias e o desagio quando dataVencimento muda', async () => {
+      prisma.recebivel.findUnique.mockResolvedValue(recebivelExistente);
+      prisma.itemNegociacaoRecebivel.findFirst.mockResolvedValue(null);
+      prisma.recebivel.update.mockImplementation(({ data }) => Promise.resolve(data));
+
+      const resultado = await service.update('r1', {
+        dataVencimento: new Date('2026-02-15'), // dataEmissao + 45 dias
+      } as any);
+
+      expect(resultado.quantidadeDias).toBe(45);
+      // 1000 * 0.03 * 45 / 30 = 45
+      expect((resultado.valorDesagio as Prisma.Decimal).toNumber()).toBeCloseTo(45, 2);
     });
 
     it('bloqueia alteracao de desagio se o recebivel esta vinculado a negociacao EM_ANALISE/APROVADA', async () => {

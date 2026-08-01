@@ -111,11 +111,10 @@ describe('Wizard de Negociacao (e2e)', () => {
         clienteId: clienteAId,
         valorNominal: 1000,
         dataEmissao: '2026-06-01',
-        dataVencimento: '2026-08-01',
+        dataVencimento: '2026-07-01', // 30 dias apos dataEmissao -> quantidadeDias derivado = 30
         numeroNotaFiscal: 'NF-WIZARD-A',
         aceite: true,
         sacado: 'Sacado Wizard A Ltda',
-        quantidadeDias: 30,
         tipoDesagio: 'SIMPLES',
         taxaDesagio: 0.03,
       })
@@ -130,11 +129,10 @@ describe('Wizard de Negociacao (e2e)', () => {
         clienteId: clienteBId,
         valorNominal: 500,
         dataEmissao: '2026-06-01',
-        dataVencimento: '2026-08-01',
+        dataVencimento: '2026-06-16', // 15 dias apos dataEmissao -> quantidadeDias derivado = 15
         numeroNotaFiscal: 'NF-WIZARD-B',
         aceite: true,
         sacado: 'Sacado Wizard B Ltda',
-        quantidadeDias: 15,
         tipoDesagio: 'SIMPLES',
         taxaDesagio: 0.02,
       })

@@ -46,11 +46,15 @@ agrupa e soma o que já vem pronto de cada título:
   tenham sido geradas (`gerarParcelas()`), senão o `valorTotalReceber` ficaria incompleto.
 - `Recebivel` segue o mesmo padrão desde o cadastro: `quantidadeDias`, `tipoDesagio`,
   `taxaDesagio`, `valorDesagio` e `valorLiquido` são propriedade do próprio `Recebivel` (calculados
-  em `RecebiveisService.create()`/`update()`, não mais na inclusão na negociação). Editar
-  `valorNominal`/`taxaDesagio`/`quantidadeDias`/`tipoDesagio` de um recebível já vinculado a uma
-  negociação `EM_ANALISE`/`APROVADA` é bloqueado (409) para não mudar silenciosamente o
-  `valorBruto` de uma negociação em andamento — só é permitido depois que a negociação sai desse
-  estado (aprovado→finalizado, ou cancelado).
+  em `RecebiveisService.create()`/`update()`, não mais na inclusão na negociação). `quantidadeDias`
+  **não é input do operador** — é sempre derivado da data relevante de cada tipo
+  (`Recebivel.calcularQuantidadeDias()`): `dataBomPara - dataEmissao` para `CHEQUE` (a data que o
+  cliente pediu pra depositar, que é o que importa pro deságio), `dataVencimento - dataEmissao`
+  para `DUPLICATA` (que não tem `dataBomPara`). Editar
+  `valorNominal`/`taxaDesagio`/`tipoDesagio`/`dataEmissao`/`dataBomPara`/`dataVencimento` de um
+  recebível já vinculado a uma negociação `EM_ANALISE`/`APROVADA` é bloqueado (409) para não mudar
+  silenciosamente o `valorBruto` de uma negociação em andamento — só é permitido depois que a
+  negociação sai desse estado (aprovado→finalizado, ou cancelado).
 
 `adicionarRecebivel()`/`adicionarEmprestimo()` só validam posse/reuso e criam o vínculo; nenhum
 valor é calculado no momento da inclusão.

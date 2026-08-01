@@ -15,7 +15,7 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { calcularValorParcela } from '../src/modules/emprestimos/emprestimo.rules';
-import { calcularDesagioPorTipo } from '../src/modules/recebiveis/recebivel.rules';
+import { calcularDesagioPorTipo, calcularQuantidadeDias } from '../src/modules/recebiveis/recebivel.rules';
 import { calcularTotaisNegociacao } from '../src/modules/negociacoes/negociacao.rules';
 
 const prisma = new PrismaClient();
@@ -97,22 +97,27 @@ async function criarClienteBase() {
 
 /**
  * Cria um recebivel avulso (nao vinculado a nenhuma negociacao), ja vencido, para os badges.
- * Sem negociacao para herdar desagio de algum lugar, entao fica zerado (mesmo criterio usado
- * pela migration de backfill para recebiveis que nunca foram vinculados).
+ * taxaDesagio fica 0 (sem negociacao/operador pra ter definido uma ainda), mas quantidadeDias
+ * segue a mesma regra automatica de qualquer Recebivel -- e sempre derivado das datas do
+ * titulo, nunca um valor arbitrario, independente de ter ou nao negociacao vinculada.
  */
 async function criarRecebivelVencidoAvulso(clienteId: string) {
+  const dataEmissao = new Date('2025-11-01');
+  const dataVencimento = new Date('2026-01-15'); // no passado em relacao a "hoje" do seed
+  const quantidadeDias = calcularQuantidadeDias(TipoRecebivel.DUPLICATA, dataEmissao, null, dataVencimento);
+
   return prisma.recebivel.create({
     data: {
       tipo: TipoRecebivel.DUPLICATA,
       clienteId,
       valorNominal: 3000,
       valorAberto: 3000,
-      dataEmissao: new Date('2025-11-01'),
-      dataVencimento: new Date('2026-01-15'), // no passado em relacao a "hoje" do seed
+      dataEmissao,
+      dataVencimento,
       status: StatusRecebivel.VENCIDO,
       numeroNotaFiscal: 'NF-VENCIDA-001',
       aceite: true,
-      quantidadeDias: 0,
+      quantidadeDias,
       tipoDesagio: TipoDesagio.SIMPLES,
       taxaDesagio: 0,
       valorDesagio: 0,
@@ -123,21 +128,25 @@ async function criarRecebivelVencidoAvulso(clienteId: string) {
 
 /** Cria um recebivel avulso pendente, sem nenhum vinculo, so para popular a listagem. */
 async function criarRecebivelPendenteAvulso(clienteId: string) {
+  const dataEmissao = new Date('2026-07-01');
+  const dataBomPara = new Date('2026-10-01');
+  const quantidadeDias = calcularQuantidadeDias(TipoRecebivel.CHEQUE, dataEmissao, dataBomPara, dataBomPara);
+
   return prisma.recebivel.create({
     data: {
       tipo: TipoRecebivel.CHEQUE,
       clienteId,
       valorNominal: 1500,
       valorAberto: 1500,
-      dataEmissao: new Date('2026-07-01'),
-      dataVencimento: new Date('2026-10-01'),
+      dataEmissao,
+      dataVencimento: dataBomPara,
       status: StatusRecebivel.PENDENTE,
       banco: '341',
       agencia: '1234',
       conta: '56789-0',
       numeroCheque: '000099',
-      dataBomPara: new Date('2026-10-01'),
-      quantidadeDias: 0,
+      dataBomPara,
+      quantidadeDias,
       tipoDesagio: TipoDesagio.SIMPLES,
       taxaDesagio: 0,
       valorDesagio: 0,
@@ -215,7 +224,9 @@ async function recalcularTotais(negociacaoId: string, valorTarifas: Prisma.Decim
  *  parcela feito ANTES do emprestimo entrar na negociacao (mostra valorPago refletindo isso). */
 async function criarNegociacaoEmAnalise(clienteId: string, usuarioId: string) {
   const taxaDesagio = 0.025;
-  const quantidadeDias = 30;
+  const dataEmissao = new Date('2026-06-01');
+  const dataVencimento = new Date('2026-08-01');
+  const quantidadeDias = calcularQuantidadeDias(TipoRecebivel.DUPLICATA, dataEmissao, null, dataVencimento);
   const { valorDesagio, valorLiquido } = calcularDesagioPorTipo(
     TipoDesagio.SIMPLES,
     10000,
@@ -229,8 +240,8 @@ async function criarNegociacaoEmAnalise(clienteId: string, usuarioId: string) {
       clienteId,
       valorNominal: 10000,
       valorAberto: 10000,
-      dataEmissao: new Date('2026-06-01'),
-      dataVencimento: new Date('2026-08-01'),
+      dataEmissao,
+      dataVencimento,
       status: StatusRecebivel.PENDENTE,
       numeroNotaFiscal: 'NF-000123',
       aceite: true,
@@ -295,7 +306,9 @@ async function criarNegociacaoEmAnalise(clienteId: string, usuarioId: string) {
 /** Negociacao APROVADA, so com recebivel, sem pagamentos ainda. */
 async function criarNegociacaoAprovada(clienteId: string, usuarioId: string) {
   const taxaDesagio = 0.03;
-  const quantidadeDias = 20;
+  const dataEmissao = new Date('2026-05-01');
+  const dataBomPara = new Date('2026-07-01');
+  const quantidadeDias = calcularQuantidadeDias(TipoRecebivel.CHEQUE, dataEmissao, dataBomPara, dataBomPara);
   const { valorDesagio, valorLiquido } = calcularDesagioPorTipo(
     TipoDesagio.SIMPLES,
     4000,
@@ -309,14 +322,14 @@ async function criarNegociacaoAprovada(clienteId: string, usuarioId: string) {
       clienteId,
       valorNominal: 4000,
       valorAberto: 4000,
-      dataEmissao: new Date('2026-05-01'),
-      dataVencimento: new Date('2026-07-01'),
+      dataEmissao,
+      dataVencimento: dataBomPara,
       status: StatusRecebivel.PENDENTE,
       banco: '033',
       agencia: '5678',
       conta: '12345-6',
       numeroCheque: '000078',
-      dataBomPara: new Date('2026-07-01'),
+      dataBomPara,
       quantidadeDias,
       tipoDesagio: TipoDesagio.SIMPLES,
       taxaDesagio,
@@ -359,7 +372,9 @@ async function criarNegociacaoAprovada(clienteId: string, usuarioId: string) {
 /** Negociacao FINALIZADA: recebivel totalmente quitado, sem tarifas, valorAReceber == 0. */
 async function criarNegociacaoFinalizada(clienteId: string, usuarioId: string) {
   const taxaDesagio = 0.02;
-  const quantidadeDias = 15;
+  const dataEmissao = new Date('2026-03-01');
+  const dataVencimento = new Date('2026-05-01');
+  const quantidadeDias = calcularQuantidadeDias(TipoRecebivel.DUPLICATA, dataEmissao, null, dataVencimento);
   const { valorDesagio, valorLiquido } = calcularDesagioPorTipo(
     TipoDesagio.SIMPLES,
     2000,
@@ -373,8 +388,8 @@ async function criarNegociacaoFinalizada(clienteId: string, usuarioId: string) {
       clienteId,
       valorNominal: 2000,
       valorAberto: 0,
-      dataEmissao: new Date('2026-03-01'),
-      dataVencimento: new Date('2026-05-01'),
+      dataEmissao,
+      dataVencimento,
       status: StatusRecebivel.QUITADO,
       numeroNotaFiscal: 'NF-000200',
       aceite: true,

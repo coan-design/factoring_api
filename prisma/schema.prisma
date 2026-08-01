@@ -173,6 +173,9 @@ model Recebivel {
 
   // --- deságio: propriedade do recebível desde o cadastro (antes vivia em
   // ItemNegociacaoRecebivel, configurado só na hora de vincular a uma negociação) ---
+  // quantidadeDias NÃO é input do operador -- calculado automaticamente em
+  // RecebiveisService (dataBomPara - dataEmissao para CHEQUE, dataVencimento - dataEmissao
+  // para DUPLICATA), recalculado a cada PATCH que mude uma dessas datas.
   quantidadeDias  Int
   tipoDesagio     TipoDesagio     @default(SIMPLES)
   taxaDesagio     Decimal         @db.Decimal(9, 6)

@@ -20,7 +20,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "recalcular:totais-negociacao": "ts-node prisma/scripts/recalcular-totais-negociacao.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
